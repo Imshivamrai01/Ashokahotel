@@ -27,6 +27,7 @@ export default function CancelOrderModal({
   order,
   onClose,
   onCancelled,
+  onSuccess,
 }: CancelOrderModalProps) {
   const [reason, setReason] = useState("");
   const [pin, setPin] = useState("");
