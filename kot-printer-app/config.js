@@ -10,6 +10,6 @@
 // or set the KOT_AGENT_TOKEN env var at build time. It must match
 // PRINT_AGENT_SECRET in the server (Vercel) environment.
 module.exports = {
-  SERVER_URL: "https://taj-saas-delta.vercel.app",
-  AGENT_TOKEN: "taj",
+  SERVER_URL: "https://ashokahotel.vercel.app",
+  AGENT_TOKEN: "ashoka",
 };

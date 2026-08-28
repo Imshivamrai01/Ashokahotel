@@ -45,7 +45,7 @@ step — it is embedded once at build time and hidden from the UI.
 2. Agent: put the **same** value into the build, either by editing
    `AGENT_TOKEN` in `kot-printer-app/config.js`, or by setting the
    `KOT_AGENT_TOKEN` env var before building. `SERVER_URL` is already hardcoded
-   to `https://taj-saas.vercel.app`.
+   to `https://ashokahotel.vercel.app`.
 
 > Note: an embedded token in a desktop app can be extracted by someone with the
 > installer. That is acceptable for order data. The fully-secure future option
