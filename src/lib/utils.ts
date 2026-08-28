@@ -142,10 +142,13 @@ export function elapsedMinutes(from: string | Date): number {
 }
 
 /** Format elapsed time as mm:ss string */
-export function formatElapsed(from: string | Date): string {
-  const totalSeconds = Math.floor(
-    (Date.now() - new Date(from).getTime()) / 1000,
-  );
+export function formatElapsed(
+  from: string | Date | number,
+  to: string | Date | number = Date.now(),
+): string {
+  const fromMs = typeof from === "number" ? from : new Date(from).getTime();
+  const toMs = typeof to === "number" ? to : new Date(to).getTime();
+  const totalSeconds = Math.max(0, Math.floor((toMs - fromMs) / 1000));
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;

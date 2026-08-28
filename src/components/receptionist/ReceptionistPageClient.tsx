@@ -523,7 +523,7 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
                                 )}
                               </div>
                               <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                                KOT #{order.kotNumber} · {formatElapsed(new Date(order.createdAt).getTime(), now)}
+                                KOT #{order.kotNumber} · {formatElapsed(order.createdAt)}
                               </p>
                             </div>
                             <Pill variant={statusMeta.pill}>{statusMeta.label}</Pill>
