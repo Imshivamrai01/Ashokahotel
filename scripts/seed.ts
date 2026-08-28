@@ -105,7 +105,7 @@ async function main() {
   if (!existingBranding) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (Branding.create as any)({
-      hotelName: "Ashoka Hotel",
+      restaurantName: "Ashoka Hotel",
       tagline: "Experience Royal Hospitality & Luxury Dining",
       primaryColor: "#0F172A",
       accentColor: "#D97706",
@@ -119,7 +119,7 @@ async function main() {
     });
     console.log("✅  Branding created for Ashoka Hotel");
   } else {
-    existingBranding.hotelName = "Ashoka Hotel";
+    existingBranding.restaurantName = "Ashoka Hotel";
     existingBranding.tagline = "Experience Royal Hospitality & Luxury Dining";
     await existingBranding.save();
     console.log("ℹ️   Branding updated for Ashoka Hotel");
