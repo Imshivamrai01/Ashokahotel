@@ -10,7 +10,8 @@ import type { IOrder } from "@/types";
 interface CancelOrderModalProps {
   order: IOrder;
   onClose: () => void;
-  onCancelled: (data: { cancelledByName?: string; cancelledByRole?: string }) => void;
+  onCancelled?: (data: { cancelledByName?: string; cancelledByRole?: string }) => void;
+  onSuccess?: (data?: { cancelledByName?: string; cancelledByRole?: string }) => void;
 }
 
 const PRESET_REASONS = [
@@ -69,7 +70,8 @@ export default function CancelOrderModal({
       toast.success(
         `Order ${order.kotNumber} cancelled by ${data.cancelledByName || "Staff"}`
       );
-      onCancelled(data);
+      onCancelled?.(data);
+      onSuccess?.(data);
     } catch {
       setError("Network error. Please check your connection.");
     } finally {
