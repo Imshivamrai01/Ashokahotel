@@ -1,0 +1,33 @@
+{
+  "id": "/customer-menu-pwa",
+  "name": "Ashoka Hotel — Digital Menu",
+  "short_name": "Ashoka Menu",
+  "description": "Ashoka Hotel — Scan & Order Digital Menu",
+  "start_url": "/menu?source=pwa_customer",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f0f0f",
+  "theme_color": "#C9A96E",
+  "categories": ["food", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

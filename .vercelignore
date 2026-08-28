@@ -1,0 +1,4 @@
+# Local-only thermal-printer agent — never deploy to Vercel
+kot-printer-app/
+AUDIT.md
+KOT-PRINTER.md

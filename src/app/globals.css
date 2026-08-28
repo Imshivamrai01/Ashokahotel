@@ -1,0 +1,423 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+@plugin "daisyui" {
+  themes:
+    light --default,
+    dark;
+}
+
+/* ── Royal Champagne Luxury Light Theme ─────────────────── */
+[data-theme="light"], :root {
+  --color-primary: #d97706; /* Champagne Gold / Royal Amber */
+  --color-primary-content: #ffffff;
+  --color-secondary: #f3f0e9;
+  --color-secondary-content: #1e293b;
+  --color-base-100: #faf9f6; /* Pearl Warm Linen Canvas */
+  --color-base-200: #ffffff; /* Crisp White Raised Surface */
+  --color-base-300: #f1ede4; /* Warm Muted Inset */
+  --color-base-content: #0f172a; /* Deep Slate Obsidian Typography */
+}
+
+/* ── Dark theme fallback ─────────────────── */
+[data-theme="dark"] {
+  --color-primary: oklch(0.72 0.19 45); /* #f97316 orange */
+  --color-primary-content: oklch(0.1 0 0);
+  --color-secondary: oklch(0.28 0 0);
+  --color-secondary-content: oklch(0.9 0 0);
+  --color-base-100: oklch(0.145 0 0);
+  --color-base-200: oklch(0.18 0 0);
+  --color-base-300: oklch(0.22 0 0);
+  --color-base-content: oklch(0.92 0 0);
+}
+
+@theme {
+  /* Fonts */
+  --font-sans: var(--font-jakarta);
+  --font-mono: var(--font-jetbrains);
+  --font-display: var(--font-playfair);
+
+  /* Brand Colors */
+  --color-brand: #f97316;
+  --color-brand-dark: #ea580c;
+  --color-brand-50: #fff7ed;
+
+  /* KDS Status Colors */
+  --color-kds-pending: #ef4444;
+  --color-kds-preparing: #f59e0b;
+  --color-kds-ready: #22c55e;
+  --color-kds-delivered: #6b7280;
+
+  /* Lead Colors */
+  --color-lead-new: #3b82f6;
+  --color-lead-won: #22c55e;
+  --color-lead-lost: #ef4444;
+  --color-lead-cold: #6b7280;
+
+  /* Table Status */
+  --color-table-free: #22c55e;
+  --color-table-occupied: #ef4444;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #f97316;
+  border-radius: 9999px;
+}
+
+/* Flipbook paper texture */
+.flipbook-page {
+  background-color: #fdf8f0;
+  background-image: radial-gradient(
+    ellipse at 20% 20%,
+    rgba(249, 115, 22, 0.04) 0%,
+    transparent 60%
+  );
+}
+
+/* KDS elapsed timer pulse */
+@keyframes ttl-warning {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+.ttl-warning {
+  animation: ttl-warning 1.2s ease-in-out infinite;
+}
+
+/* KDS board new-kot flash */
+@keyframes board-flash {
+  0% {
+    background-color: transparent;
+  }
+  20% {
+    background-color: rgba(251, 191, 36, 0.15);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.board-flash {
+  animation: board-flash 1.5s ease-out forwards;
+}
+
+/* Smooth category scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Prevent iOS/Android overscroll bounce on menu/app screens */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* Hide scrollbars on horizontal tab rails / overflow strips */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Respect reduced-motion: neutralise CSS animation/transition globally */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Custom font utilities */
+@utility font-playfair {
+  font-family: var(--font-playfair);
+}
+@utility font-jakarta {
+  font-family: var(--font-jakarta);
+}
+@utility font-mono-jetbrains {
+  font-family: var(--font-jetbrains);
+}
+
+/* Marquee ticker for KDS cancelled items */
+@keyframes marquee {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+@utility animate-marquee {
+  animation: marquee 12s linear infinite;
+  display: inline-block;
+}
+
+/* Shake animation for login errors */
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(-6px);
+  }
+  30% {
+    transform: translateX(6px);
+  }
+  45% {
+    transform: translateX(-4px);
+  }
+  60% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
+  90% {
+    transform: translateX(2px);
+  }
+}
+@utility animate-shake {
+  animation: shake 0.45s ease-in-out;
+}
+
+/* ── DaisyUI dark-theme overrides ────────────────────────────────────────── */
+
+/* Toggle: make unchecked track clearly visible in dark mode */
+[data-theme="dark"] .toggle {
+  --tglbg: oklch(0.35 0 0);
+  border-color: oklch(0.48 0 0);
+}
+[data-theme="dark"] .toggle-success:checked {
+  --tglbg: var(--color-success);
+}
+[data-theme="dark"] .toggle-primary:checked {
+  --tglbg: var(--color-primary);
+}
+
+/* Checkbox: unchecked box was near-invisible in dark mode (border + fill too
+   dark). Give it a clear border, subtle fill, and an orange checked state so
+   every checkbox in the app is visible. Also covers raw <input type=checkbox>. */
+[data-theme="dark"] .checkbox,
+[data-theme="dark"] input[type="checkbox"]:not(.toggle) {
+  border: 1.5px solid oklch(0.62 0 0);
+  background-color: oklch(1 0 0 / 6%);
+}
+[data-theme="dark"] .checkbox:hover,
+[data-theme="dark"] input[type="checkbox"]:not(.toggle):hover {
+  border-color: oklch(0.78 0 0);
+}
+[data-theme="dark"] .checkbox:checked,
+[data-theme="dark"] .checkbox:where(:checked) {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary);
+  color: var(--color-primary-content);
+}
+[data-theme="dark"] .checkbox:focus-visible,
+[data-theme="dark"] input[type="checkbox"]:not(.toggle):focus-visible {
+  outline: 2px solid oklch(0.72 0.19 45 / 70%);
+  outline-offset: 1px;
+}
+
+/* Select / option readability in dark theme */
+[data-theme="dark"] select option {
+  background-color: oklch(0.18 0 0);
+  color: oklch(0.9 0 0);
+}
+
+/* DaisyUI dropdown menus — ensure bg is distinct from page */
+[data-theme="dark"] .dropdown-content {
+  background-color: oklch(0.2 0 0);
+  border: 1px solid oklch(1 0 0 / 8%);
+}
+
+/* Ensure table row hover is subtle, not jarring */
+[data-theme="dark"] .table tr.hover:hover,
+[data-theme="dark"] .table :where(tbody tr:hover) {
+  background-color: oklch(1 0 0 / 4%);
+}
+
+/* DaisyUI badge visibility — ghost badge in dark is too transparent */
+[data-theme="dark"] .badge-ghost {
+  background-color: oklch(1 0 0 / 10%);
+  color: oklch(0.75 0 0);
+  border-color: oklch(1 0 0 / 15%);
+}
+
+/* ShadCN Input — ensure visible border in dark mode */
+.dark input[data-slot="input"],
+.dark textarea[data-slot="textarea"] {
+  border-color: oklch(1 0 0 / 15%);
+  background-color: oklch(1 0 0 / 5%);
+}
+.dark input[data-slot="input"]:focus-visible,
+.dark textarea[data-slot="textarea"]:focus-visible {
+  border-color: oklch(0.72 0.19 45 / 70%);
+}
+
+/* Native <select> inside dark modals/panels */
+.dark select {
+  background-color: oklch(1 0 0 / 5%);
+  border-color: oklch(1 0 0 / 15%);
+  color: inherit;
+  color-scheme: dark;
+}
+
+/* ShadCN Button ghost variant — dark hover must not flash white */
+.dark [data-slot="button"][class*="hover:bg-muted"]:hover {
+  background-color: oklch(1 0 0 / 8%);
+}
+
+/* Hide default number input arrows */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.18 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.18 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  /* Brand orange primary for ShadCN components */
+  --primary: oklch(0.72 0.19 45);
+  --primary-foreground: oklch(0.1 0 0);
+  --secondary: oklch(0.25 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.25 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.25 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.65 0.22 27);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.72 0.19 45 / 60%);
+  --chart-1: oklch(0.72 0.19 45);
+  --chart-2: oklch(0.6 0.18 160);
+  --chart-3: oklch(0.6 0.18 240);
+  --chart-4: oklch(0.6 0.18 300);
+  --chart-5: oklch(0.6 0.18 80);
+  --sidebar: oklch(0.18 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.72 0.19 45);
+  --sidebar-primary-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.25 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.72 0.19 45 / 60%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

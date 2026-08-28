@@ -1,0 +1,59 @@
+{
+  "id": "/admin-staff-pwa",
+  "name": "Ashoka Hotel — Staff & Admin Portal",
+  "short_name": "Ashoka Staff POS",
+  "description": "Ashoka Hotel — Staff Operations, Captain, Kitchen & POS",
+  "start_url": "/login?source=pwa_staff",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f0f0f",
+  "theme_color": "#C9A96E",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Captain App",
+      "short_name": "Captain",
+      "url": "/captain",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Kitchen Display",
+      "short_name": "Kitchen",
+      "url": "/kitchen",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Cashier POS",
+      "short_name": "Cashier",
+      "url": "/cashier",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Admin Dashboard",
+      "short_name": "Admin",
+      "url": "/admin",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

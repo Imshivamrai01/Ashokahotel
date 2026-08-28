@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ashoka Hotel KOT Printer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #14161a; --panel: #1d2026; --panel2: #23272f; --line: #2c3038;
+        --text: #e6e8ec; --muted: #9aa0aa; --accent: #f59e0b;
+        --ok: #28b450; --bad: #d23232; --warn: #e0a82e;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0; font: 14px/1.45 system-ui, sans-serif;
+        background: var(--bg); color: var(--text); display: flex;
+      }
+      /* Sidebar */
+      .side {
+        width: 210px; flex: 0 0 210px; background: var(--panel);
+        border-right: 1px solid var(--line); display: flex; flex-direction: column;
+        padding: 16px 12px;
+      }
+      .brand { font-size: 15px; font-weight: 700; padding: 4px 8px 16px; }
+      .brand small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
+      nav button {
+        display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+        background: none; border: none; color: var(--muted); padding: 10px 10px;
+        border-radius: 8px; cursor: pointer; font-size: 13.5px; margin-bottom: 2px;
+      }
+      nav button:hover { background: var(--panel2); color: var(--text); }
+      nav button.active { background: var(--panel2); color: var(--accent); }
+      nav button .ico { width: 16px; text-align: center; }
+      .side .spacer { flex: 1; }
+      .pill {
+        display: flex; align-items: center; gap: 8px; padding: 9px 10px;
+        background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+        font-size: 12px; color: var(--muted);
+      }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: 0 0 9px; }
+      .dot.ok { background: var(--ok); }
+      /* Content */
+      .content { flex: 1; overflow-y: auto; padding: 22px 26px; }
+      h2 { font-size: 18px; margin: 0 0 16px; }
+      .tab { display: none; }
+      .tab.active { display: block; }
+      .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+      .card .k { font-size: 12px; color: var(--muted); }
+      .card .v { font-size: 26px; font-weight: 700; margin-top: 4px; }
+      .card .v.ok { color: var(--ok); } .card .v.bad { color: var(--bad); }
+      .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+      .panel h3 { margin: 0 0 12px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+      .kv { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+      .kv:last-child { border-bottom: none; }
+      .kv span:first-child { color: var(--muted); }
+      .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+      button.act { background: var(--panel2); border: 1px solid var(--line); color: var(--fg); border-radius: 9px; padding: 10px 14px; cursor: pointer; }
+      button.act:hover { border-color: var(--accent); }
+      button.act:disabled { opacity: .5; cursor: not-allowed; }
+      button.primary { background: var(--accent); border: none; color: #1a1206; font-weight: 600; }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+      input[type="text"], input[type="number"], select {
+        width: 100%; background: var(--panel2); border: 1px solid var(--line);
+        color: var(--fg); border-radius: 8px; padding: 9px 10px; outline: none;
+      }
+      input:focus, select:focus { border-color: var(--accent); }
+      .row { display: flex; gap: 10px; }
+      .seg { display: flex; gap: 8px; }
+      .seg button { flex: 1; padding: 9px; border-radius: 8px; cursor: pointer; background: var(--panel2); border: 1px solid var(--line); color: var(--fg); }
+      .seg button.active { border-color: var(--accent); color: var(--accent); }
+      .scan { display: flex; gap: 8px; align-items: flex-end; }
+      .scan select { flex: 1; }
+      .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+      .check input { width: auto; }
+      .hide { display: none; }
+      /* Log */
+      .log { background: #0f1115; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; height: 240px; overflow-y: auto; font: 12px/1.5 ui-monospace, monospace; }
+      .log .ln { display: flex; gap: 8px; padding: 1px 0; }
+      .log .t { color: #5b616b; flex: 0 0 auto; }
+      .log .info { color: #cdd2da; } .log .error { color: #ff8a8a; } .log .warn { color: var(--warn); }
+      /* Table */
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); }
+      th { color: var(--muted); font-weight: 500; font-size: 12px; }
+      td .badge { font-size: 11px; padding: 2px 7px; border-radius: 20px; }
+      .badge.ok { background: #14361f; color: #6fe39a; } .badge.bad { background: #3a1414; color: #ff9a9a; }
+      .empty { color: var(--muted); padding: 20px; text-align: center; }
+      .banner { background: #3a1414; border: 1px solid var(--bad); color: #ffb4b4; border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 14px; }
+      .footbar { display: flex; gap: 10px; margin-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <aside class="side">
+      <div class="brand">Ashoka KOT<small id="serverLine">printer agent</small></div>
+      <nav>
+        <button data-tab="dash" class="active"><span class="ico">▦</span> Dashboard</button>
+        <button data-tab="printer"><span class="ico">🖨</span> Printer</button>
+        <button data-tab="history"><span class="ico">🧾</span> History</button>
+        <button data-tab="pos"><span class="ico">🛒</span> Order</button>
+        <button data-tab="settings"><span class="ico">⚙</span> Settings</button>
+      </nav>
+      <div class="spacer"></div>
+      <div class="pill"><span class="dot" id="pillDot"></span><span id="pillMsg">Starting…</span></div>
+    </aside>
+
+    <main class="content">
+      <div id="tokenWarn" class="banner hide">
+        ⚠ App token not set in this build — printing is disabled. Rebuild with <code>KOT_AGENT_TOKEN</code> set.
+      </div>
+
+      <!-- DASHBOARD -->
+      <section class="tab active" id="tab-dash">
+        <h2>Dashboard</h2>
+        <div class="cards">
+          <div class="card"><div class="k">Printed today</div><div class="v ok" id="cPrinted">0</div></div>
+          <div class="card"><div class="k">Pending in queue</div><div class="v" id="cPending">0</div></div>
+          <div class="card"><div class="k">Failures</div><div class="v bad" id="cFail">0</div></div>
+        </div>
+        <div class="panel">
+          <h3>Connection</h3>
+          <div class="kv"><span>Server</span><span id="dServer">—</span></div>
+          <div class="kv"><span>Printer</span><span id="dPrinter">—</span></div>
+          <div class="kv"><span>Status</span><span id="dStatus">—</span></div>
+        </div>
+        <div class="actions" style="margin-bottom:16px">
+          <button class="act primary" id="bTest">Test Print</button>
+          <button class="act" id="bPrintNow">Print Now</button>
+          <button class="act" id="bFind">Find Printer</button>
+        </div>
+        <div class="panel">
+          <h3>Activity</h3>
+          <div class="log" id="log"></div>
+        </div>
+      </section>
+
+      <!-- PRINTER -->
+      <section class="tab" id="tab-printer">
+        <h2>Printer</h2>
+        <div class="panel">
+          <h3>Connection type</h3>
+          <div class="seg">
+            <button id="seg-tcp">WiFi / LAN</button>
+            <button id="seg-usb">USB</button>
+          </div>
+
+          <div id="tcpBox">
+            <label>Detected printers</label>
+            <div class="scan">
+              <select id="lanResults"><option value="">— scan —</option></select>
+              <button class="act" id="scanLan">Scan</button>
+            </div>
+            <div class="row">
+              <div style="flex:1"><label>Manual IP</label><input id="printerIp" type="text" placeholder="192.168.1.150" /></div>
+              <div style="flex:0 0 90px"><label>Port</label><input id="printerPort" type="number" placeholder="9100" /></div>
+            </div>
+          </div>
+
+          <div id="usbBox" class="hide">
+            <label>USB / Windows printer</label>
+            <div class="scan">
+              <select id="usbResults"><option value="">— scan —</option></select>
+              <button class="act" id="scanUsb">Scan</button>
+            </div>
+            <p style="font-size:11px;color:var(--muted)">USB needs the native printer driver (see README).</p>
+          </div>
+        </div>
+        <div class="footbar">
+          <button class="act primary" id="bSavePrinter">Save</button>
+          <button class="act" id="bTest2">Test Print</button>
+        </div>
+
+        <!-- BILL PRINTER (separate device) -->
+        <div class="panel" style="margin-top:22px">
+          <h3>Bill / Receipt printer</h3>
+          <div class="check" style="margin-top:0">
+            <input id="billEnabled" type="checkbox" />
+            <label style="margin:0">Print customer bills to a separate printer</label>
+          </div>
+          <div id="billBox" class="hide">
+            <div class="seg" style="margin-top:12px">
+              <button id="bseg-tcp">WiFi / LAN</button>
+              <button id="bseg-usb">USB</button>
+            </div>
+            <div id="billTcpBox">
+              <div class="row">
+                <div style="flex:1"><label>Bill printer IP</label><input id="billPrinterIp" type="text" placeholder="192.168.1.151" /></div>
+                <div style="flex:0 0 90px"><label>Port</label><input id="billPrinterPort" type="number" placeholder="9100" /></div>
+              </div>
+            </div>
+            <div id="billUsbBox" class="hide">
+              <label>USB / Windows printer</label>
+              <div class="scan">
+                <select id="billUsbResults"><option value="">— scan —</option></select>
+                <button class="act" id="scanBillUsb">Scan</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="footbar">
+          <button class="act primary" id="bSaveBill">Save bill printer</button>
+          <button class="act" id="bTestBill">Test bill</button>
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section class="tab" id="tab-history">
+        <h2>Print history</h2>
+        <div class="panel" style="padding:0">
+          <table>
+            <thead><tr><th>KOT</th><th>Table</th><th>Captain</th><th>Time</th><th>Status</th><th></th></tr></thead>
+            <tbody id="histBody"></tbody>
+          </table>
+          <div class="empty hide" id="histEmpty">No prints yet.</div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="tab" id="tab-settings">
+        <h2>Settings</h2>
+        <div class="panel">
+          <h3>Server</h3>
+          <div class="kv"><span>URL</span><span id="sServer">—</span></div>
+          <div class="kv"><span>App token</span><span id="sToken">—</span></div>
+        </div>
+        <div class="panel">
+          <h3>Agent</h3>
+          <label>Poll interval (ms)</label>
+          <input id="pollMs" type="number" placeholder="4000" />
+          <div class="check"><input id="autoLaunch" type="checkbox" /><label style="margin:0">Start automatically on boot</label></div>
+        </div>
+        <div class="footbar"><button class="act primary" id="bSaveSettings">Save</button></div>
+      </section>
+
+      <!-- Offline POS -->
+      <div id="tab-pos" class="tab">
+        <h2>Offline Order</h2>
+        <div style="display: flex; gap: 16px;">
+          <!-- Menu Items List -->
+          <div class="panel" style="flex: 2; height: 500px; overflow-y: auto; padding: 0;">
+            <div id="posMenuEmpty" class="empty">Menu not synced. Let it connect to server once.</div>
+            <div id="posMenuList" style="padding: 10px;"></div>
+          </div>
+          <!-- Cart & Table -->
+          <div class="panel" style="flex: 1; display: flex; flex-direction: column;">
+            <h3>Cart</h3>
+            <div class="form-group" style="margin-bottom:1rem;">
+              <label style="display:block;margin-bottom:0.25rem;">Table Number</label>
+              <select id="posTable" style="width:100%;">
+                <option value="">Select a table...</option>
+              </select>
+            </div>
+            
+            <div class="empty" id="posCartEmpty" style="padding: 10px 0;">Cart is empty</div>
+            <div id="posCartList" style="flex: 1; overflow-y: auto; border-top: 1px solid var(--line); font-size: 13px;">
+            </div>
+            
+            <button id="btnPlaceOrder" class="act primary" style="margin-top: 16px; width: 100%;">Place Offline Order</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
