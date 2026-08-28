@@ -265,7 +265,16 @@ export default function CartDrawer({
     try {
       localStorage.removeItem("ah_guest_active_order_id");
     } catch {}
+    onClose();
   };
+
+  // If user has added items to cart, ALWAYS show the new Cart.
+  // Only show Tracker if cart is empty and an active non-delivered order exists.
+  const isOrderActive =
+    liveOrder &&
+    !["delivered", "cleared", "paid", "cancelled"].includes(liveOrder.status);
+
+  const showTracker = items.length === 0 && (isOrderActive || (liveOrder && liveOrder.status === "delivered"));
 
   // Compute status step index
   const getStatusStep = (status: string) => {
@@ -313,14 +322,14 @@ export default function CartDrawer({
               <div className="flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5 text-amber-700" />
                 <h2 className="font-extrabold text-base text-slate-900">
-                  {liveOrder ? "Live Order Tracker" : "Your Order Cart"}
+                  {showTracker ? "Live Order Tracker" : "Your Order Cart"}
                 </h2>
-                {!liveOrder && items.length > 0 && (
+                {!showTracker && items.length > 0 && (
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-black bg-amber-100 text-amber-900 border border-amber-300/80">
                     {items.length} {items.length === 1 ? "item" : "items"}
                   </span>
                 )}
-                {liveOrder && (
+                {showTracker && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     Live
@@ -328,7 +337,7 @@ export default function CartDrawer({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {!liveOrder && items.length > 0 && (
+                {!showTracker && items.length > 0 && (
                   <button
                     className="px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50 active:scale-95 rounded-lg flex items-center gap-1 transition-all cursor-pointer"
                     onClick={clear}
@@ -348,7 +357,7 @@ export default function CartDrawer({
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-              {liveOrder ? (
+              {showTracker && liveOrder ? (
                 /* Live Order Tracking View */
                 <div className="py-2 space-y-4">
                   {/* Order header card */}
@@ -708,7 +717,7 @@ export default function CartDrawer({
             </div>
 
             {/* Footer */}
-            {!liveOrder && items.length > 0 && (
+            {!showTracker && items.length > 0 && (
               <div className="px-5 py-4 border-t border-amber-900/10 bg-white/80 backdrop-blur-md space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-600 text-sm font-semibold">

@@ -30,8 +30,23 @@ export default function TabletFloatingButtons({
 
   const [callState, setCallState] = useState<CallState>("idle");
 
+  const playCallChime = () => {
+    try {
+      const audio = new Audio("/alert.webm");
+      audio.volume = 0.8;
+      audio.play().catch(() => {
+        try {
+          const fb = new Audio("/staffcallbeep.mp3");
+          fb.volume = 0.8;
+          fb.play().catch(() => {});
+        } catch {}
+      });
+    } catch {}
+  };
+
   const handleCallCaptain = async () => {
     if (callState !== "idle") return;
+    playCallChime();
     setCallState("calling");
     try {
       const res = await fetch("/api/captain-call", {

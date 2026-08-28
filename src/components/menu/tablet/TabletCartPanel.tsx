@@ -207,7 +207,16 @@ export default function TabletCartPanel({
     try {
       localStorage.removeItem("ah_guest_active_order_id");
     } catch {}
+    onClose();
   };
+
+  const isOrderActive =
+    liveOrder &&
+    !["delivered", "cleared", "paid", "cancelled"].includes(liveOrder.status);
+
+  const showTracker =
+    items.length === 0 &&
+    (isOrderActive || (liveOrder && liveOrder.status === "delivered"));
 
   // Compute status step index
   const getStatusStep = (status: string) => {
@@ -247,14 +256,14 @@ export default function TabletCartPanel({
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-amber-600" />
             <h2 className="font-extrabold text-base font-playfair tracking-wide text-slate-900">
-              {liveOrder ? "Live Order Tracker" : "Your Order"}
+              {showTracker ? "Live Order Tracker" : "Your Order"}
             </h2>
-            {!liveOrder && items.length > 0 && (
+            {!showTracker && items.length > 0 && (
               <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-bold shadow-xs">
                 {items.reduce((s, i) => s + i.quantity, 0)}
               </span>
             )}
-            {liveOrder && (
+            {showTracker && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Live
@@ -262,7 +271,7 @@ export default function TabletCartPanel({
             )}
           </div>
           <div className="flex items-center gap-2">
-            {!liveOrder && items.length > 0 && (
+            {!showTracker && items.length > 0 && (
               <button
                 className="btn btn-ghost btn-xs text-rose-600 hover:bg-rose-50 font-bold"
                 onClick={clear}
@@ -285,7 +294,7 @@ export default function TabletCartPanel({
 
         {/* Items / Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {liveOrder ? (
+          {showTracker && liveOrder ? (
             /* Live Order Status Tracking View */
             <div className="py-2 space-y-4">
               {/* Order header banner */}
@@ -617,7 +626,7 @@ export default function TabletCartPanel({
         </div>
 
         {/* Footer Actions */}
-        {!liveOrder && items.length > 0 && (
+        {!showTracker && items.length > 0 && (
           <div className="p-4 border-t border-slate-100 space-y-3 bg-amber-50/30">
             <div className="flex justify-between items-baseline">
               <span className="text-slate-600 text-sm font-bold">Total Amount</span>
