@@ -31,10 +31,12 @@ interface Staff {
 }
 
 const ROLE_PILL: Record<string, string> = {
+  receptionist: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
   captain: "bg-info/15 text-info border-info/30",
   kitchen: "bg-warning/15 text-warning border-warning/30",
   cashier: "bg-success/15 text-success border-success/30",
   lead_manager: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  inventory_manager: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
 };
 
 export default function StaffPage() {
@@ -347,6 +349,7 @@ export default function StaffPage() {
                   "focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
                 )}
               >
+                <option value="receptionist">Receptionist</option>
                 <option value="captain">Captain</option>
                 <option value="kitchen">Kitchen</option>
                 <option value="cashier">Cashier</option>

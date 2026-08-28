@@ -123,6 +123,7 @@ export default function LocationsPage() {
       toast.success("Location deleted");
       qc.invalidateQueries({ queryKey: ["admin-locations"] });
       qc.invalidateQueries({ queryKey: ["locations"] });
+      qc.invalidateQueries({ queryKey: ["all-locations"] });
       qc.invalidateQueries({ queryKey: ["captain-locations"] });
     },
     onError: (e: Error, _id, ctx) => {
@@ -132,6 +133,7 @@ export default function LocationsPage() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["admin-locations"] });
       qc.invalidateQueries({ queryKey: ["locations"] });
+      qc.invalidateQueries({ queryKey: ["all-locations"] });
       qc.invalidateQueries({ queryKey: ["captain-locations"] });
     },
   });

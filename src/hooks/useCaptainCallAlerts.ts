@@ -21,28 +21,35 @@ export function useCaptainCallAlerts() {
   const playBeep = useCallback(() => {
     try {
       if (!audioRef.current) {
-        audioRef.current = new Audio("/staffcallbeep.mp3");
-        audioRef.current.volume = 0.8;
+        audioRef.current = new Audio("/alert.webm");
+        audioRef.current.volume = 0.9;
       }
       audioRef.current.currentTime = 0;
       audioRef.current.play().catch(() => {
-        // Web Audio fallback
+        // Fallback to staffcallbeep.mp3
         try {
-          const AudioCtx =
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (window as any).AudioContext || (window as any).webkitAudioContext;
-          if (!AudioCtx) return;
-          const ctx: AudioContext = new AudioCtx();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.type = "triangle";
-          osc.frequency.setValueAtTime(660, ctx.currentTime);
-          gain.gain.setValueAtTime(0.6, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-          osc.start(ctx.currentTime);
-          osc.stop(ctx.currentTime + 0.8);
+          const fallback = new Audio("/staffcallbeep.mp3");
+          fallback.volume = 0.8;
+          fallback.play().catch(() => {
+            // Web Audio synthesizer fallback
+            try {
+              const AudioCtx =
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (window as any).AudioContext || (window as any).webkitAudioContext;
+              if (!AudioCtx) return;
+              const ctx: AudioContext = new AudioCtx();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.type = "triangle";
+              osc.frequency.setValueAtTime(660, ctx.currentTime);
+              gain.gain.setValueAtTime(0.6, ctx.currentTime);
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+              osc.start(ctx.currentTime);
+              osc.stop(ctx.currentTime + 0.8);
+            } catch {}
+          });
         } catch {}
       });
     } catch {}

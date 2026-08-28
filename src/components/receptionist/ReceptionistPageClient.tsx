@@ -36,6 +36,7 @@ import TableStatusGrid from "@/components/cashier/TableStatusGrid";
 import CashierInvoices from "@/components/cashier/CashierInvoices";
 import CancelOrderModal from "@/components/captain/CancelOrderModal";
 import KOTBillPrint from "@/components/cashier/KOTBillPrint";
+import { useCaptainCallAlerts } from "@/hooks/useCaptainCallAlerts";
 
 interface Props {
   staffName: string;
@@ -122,7 +123,10 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
     staleTime: 60_000,
   });
 
-  // Sound chime when new unconfirmed order arrives
+  // 5. Room Call Alerts (Guest assistance calls from rooms/tables)
+  const { alerts: roomCalls, dismiss: dismissRoomCall } = useCaptainCallAlerts();
+
+  // Sound chime when new unconfirmed order arrives using /alert.webm
   const prevUnconfirmedCount = useRef(0);
   const unconfirmedOrders = useMemo(
     () => allOrders.filter((o) => o.status === "pending_captain" || !o.isCaptainConfirmed),
@@ -135,21 +139,16 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
         duration: 6000,
       });
       try {
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15); // A5
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.5);
-      } catch {
-        // audio context blocked
-      }
+        const audio = new Audio("/alert.webm");
+        audio.volume = 0.9;
+        audio.play().catch(() => {
+          try {
+            const fallback = new Audio("/staffcallbeep.mp3");
+            fallback.volume = 0.8;
+            fallback.play().catch(() => {});
+          } catch {}
+        });
+      } catch {}
     }
     prevUnconfirmedCount.current = unconfirmedOrders.length;
   }, [unconfirmedOrders.length]);
@@ -411,6 +410,34 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-hidden flex flex-col bg-[#FAF9F6]">
+        {/* Active Room / Table Guest Calls Banner */}
+        {roomCalls.length > 0 && (
+          <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white px-4 py-2.5 shadow-md flex items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="text-xl animate-bounce">🛎️</span>
+              <div>
+                <p className="text-xs sm:text-sm font-extrabold tracking-wide">
+                  {roomCalls.map((c) => c.tableLabel).join(", ")} calling for assistance!
+                </p>
+                <p className="text-[11px] text-white/80">
+                  Guest pressed the call bell from room / table
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {roomCalls.map((call) => (
+                <button
+                  key={call._id}
+                  onClick={() => dismissRoomCall(call._id)}
+                  className="px-3 py-1 bg-white text-rose-700 hover:bg-rose-50 text-xs font-black rounded-lg shadow-xs transition-transform active:scale-95 cursor-pointer"
+                >
+                  ✓ Attended {call.tableLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ─── TAB 1: LIVE ROOM ORDERS ────────────────────────────────────────── */}
         {activeTab === "live" && (
           <div className="flex-1 flex flex-col overflow-hidden p-4 sm:p-6 max-w-7xl w-full mx-auto">

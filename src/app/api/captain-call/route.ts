@@ -137,56 +137,59 @@ export async function POST(req: NextRequest) {
     status: "pending",
   });
 
-  // Fan-out Web Push to all captain/admin subscriptions (fire-and-forget)
-  try {
-    const subs = await PushSubscription.find({
-      role: { $in: ["captain", "admin"] },
-    }).lean();
+    // Fan-out Web Push to all captain/admin/receptionist subscriptions (fire-and-forget)
+    try {
+      const subs = await PushSubscription.find({
+        role: { $in: ["captain", "admin", "receptionist"] },
+      }).lean();
 
-    const payload = JSON.stringify({
-      title: "🔔 Table Calling!",
-      body: `${location.label} needs your attention`,
-      tag: `captain-call-${location._id}`,
-      data: { tableLabel: location.label },
-    });
+      const payload = JSON.stringify({
+        title: "🔔 Room / Table Calling!",
+        body: `${location.label} needs assistance`,
+        tag: `captain-call-${location._id}`,
+        data: { tableLabel: location.label },
+      });
 
-    await Promise.allSettled(
-      subs.map((sub) =>
-        webpush
-          .sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-            },
-            payload,
-          )
-          .catch(async (err: { statusCode?: number }) => {
-            // Remove stale subscriptions (410 Gone / 404 Not Found)
-            if (err?.statusCode === 410 || err?.statusCode === 404) {
-              await PushSubscription.deleteOne({ endpoint: sub.endpoint });
-            }
-          }),
-      ),
-    );
-  } catch {
-    // Push failures must never break the call creation
+      await Promise.allSettled(
+        subs.map((sub) =>
+          webpush
+            .sendNotification(
+              {
+                endpoint: sub.endpoint,
+                keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+              },
+              payload,
+            )
+            .catch(async (err: { statusCode?: number }) => {
+              // Remove stale subscriptions (410 Gone / 404 Not Found)
+              if (err?.statusCode === 410 || err?.statusCode === 404) {
+                await PushSubscription.deleteOne({ endpoint: sub.endpoint });
+              }
+            }),
+        ),
+      );
+    } catch {
+      // Push failures must never break the call creation
+    }
+
+    return NextResponse.json({ success: true });
   }
 
-  return NextResponse.json({ success: true });
-}
+  // GET /api/captain-call — captain/receptionist polls for pending calls
+  export async function GET() {
+    const session = await auth();
+    if (
+      !session?.user ||
+      !["admin", "captain", "receptionist"].includes(session.user.role)
+    ) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-// GET /api/captain-call — captain polls for pending calls
-export async function GET() {
-  const session = await auth();
-  if (!session?.user || !["admin", "captain"].includes(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    await connectDB();
+
+    const calls = await CaptainCall.find({ status: "pending" })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    return NextResponse.json(calls);
   }
-
-  await connectDB();
-
-  const calls = await CaptainCall.find({ status: "pending" })
-    .sort({ createdAt: 1 })
-    .lean();
-
-  return NextResponse.json(calls);
-}

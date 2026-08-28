@@ -246,3 +246,67 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// GET /api/orders/self-order?orderId=... (guest public tracking)
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const orderId = searchParams.get("orderId");
+  const tableId = searchParams.get("tableId");
+
+  if (!orderId && !tableId) {
+    return NextResponse.json(
+      { error: "orderId or tableId required" },
+      { status: 400 },
+    );
+  }
+
+  await connectDB();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let order: any = null;
+  if (orderId && mongoose.Types.ObjectId.isValid(orderId)) {
+    order = await Order.findById(orderId)
+      .select(
+        "kotNumber kotDate tableLabel status isCaptainConfirmed items createdAt total specialInstructions confirmedAt",
+      )
+      .lean();
+  } else if (tableId) {
+    order = await Order.findOne({
+      tableId,
+      status: { $nin: ["cleared", "paid", "cancelled"] },
+    })
+      .sort({ createdAt: -1 })
+      .select(
+        "kotNumber kotDate tableLabel status isCaptainConfirmed items createdAt total specialInstructions confirmedAt",
+      )
+      .lean();
+  }
+
+  if (!order) {
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    success: true,
+    order: {
+      _id: String(order._id),
+      kotNumber: order.kotNumber,
+      tableLabel: order.tableLabel,
+      status: order.status,
+      isCaptainConfirmed: Boolean(order.isCaptainConfirmed),
+      confirmedAt: order.confirmedAt,
+      createdAt: order.createdAt,
+      total: order.total,
+      specialInstructions: order.specialInstructions,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      items: (order.items || []).map((i: any) => ({
+        name: i.name,
+        quantity: i.quantity,
+        price: i.price,
+        itemStatus: i.itemStatus || "pending",
+        isVegetarian: i.isVegetarian,
+      })),
+    },
+  });
+}
+

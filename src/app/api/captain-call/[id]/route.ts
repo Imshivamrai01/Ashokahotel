@@ -9,7 +9,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth();
-  if (!session?.user || !["admin", "captain"].includes(session.user.role)) {
+  if (
+    !session?.user ||
+    !["admin", "captain", "receptionist"].includes(session.user.role)
+  ) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

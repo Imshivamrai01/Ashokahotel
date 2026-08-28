@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   X,
@@ -14,6 +14,8 @@ import {
   Loader2,
   AlertCircle,
   ShoppingBag,
+  ChefHat,
+  RefreshCw,
 } from "lucide-react";
 import Image from "next/image";
 import { useCartStore } from "@/store/cart";
@@ -28,6 +30,23 @@ interface Props {
   branding: IBranding | null;
   location: ILocation | null;
   onClose: () => void;
+}
+
+interface LiveOrderTrack {
+  _id: string;
+  kotNumber: string;
+  tableLabel: string;
+  status: string;
+  isCaptainConfirmed: boolean;
+  total: number;
+  createdAt: string;
+  items: Array<{
+    name: string;
+    quantity: number;
+    price: number;
+    itemStatus: string;
+    isVegetarian: boolean;
+  }>;
 }
 
 export default function TabletCartPanel({
@@ -47,16 +66,25 @@ export default function TabletCartPanel({
   const [instrValue, setInstrValue] = useState(specialInstructions);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [placedOrder, setPlacedOrder] = useState<{
-    kotNumber: string;
-    tableLabel: string;
-  } | null>(null);
+
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [liveOrder, setLiveOrder] = useState<LiveOrderTrack | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
 
   const [availableLocations, setAvailableLocations] = useState<ILocation[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>(location?._id || "");
 
   const total = totalAmount();
-  const isRoom = location?.type === "room";
+
+  // Check saved active order on mount
+  useEffect(() => {
+    try {
+      const savedId = localStorage.getItem("ah_guest_active_order_id");
+      if (savedId && !activeOrderId) {
+        setActiveOrderId(savedId);
+      }
+    } catch {}
+  }, [activeOrderId]);
 
   useEffect(() => {
     if (!location?._id) {
@@ -74,11 +102,42 @@ export default function TabletCartPanel({
     }
   }, [location, selectedTableId]);
 
+  // Poll active order status
+  const pollOrderStatus = useCallback(async (orderId: string) => {
+    try {
+      setIsPolling(true);
+      const res = await fetch(`/api/orders/self-order?orderId=${orderId}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          localStorage.removeItem("ah_guest_active_order_id");
+          setActiveOrderId(null);
+          setLiveOrder(null);
+        }
+        return;
+      }
+      const data = await res.json();
+      if (data?.success && data.order) {
+        setLiveOrder(data.order);
+      }
+    } catch {} finally {
+      setIsPolling(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeOrderId) return;
+    pollOrderStatus(activeOrderId);
+    const timer = setInterval(() => {
+      pollOrderStatus(activeOrderId);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [activeOrderId, pollOrderStatus]);
+
   const handlePlaceOrder = async () => {
     if (items.length === 0 || isSubmitting) return;
     const targetTableId = location?._id || selectedTableId;
     if (!targetTableId) {
-      setError("Please select a table to place your order.");
+      setError("Please select a table or room to place your order.");
       return;
     }
 
@@ -107,13 +166,16 @@ export default function TabletCartPanel({
         return;
       }
 
+      const newId = data.order._id;
+      setActiveOrderId(newId);
+      try {
+        localStorage.setItem("ah_guest_active_order_id", newId);
+      } catch {}
+
       clear();
-      setPlacedOrder({
-        kotNumber: data.order.kotNumber,
-        tableLabel: data.order.tableLabel || location?.label || "Table",
-      });
+      pollOrderStatus(newId);
     } catch {
-      setError("Network error. Please ask your captain directly.");
+      setError("Network error. Please ask reception directly or check connection.");
     } finally {
       setIsSubmitting(false);
     }
@@ -121,20 +183,42 @@ export default function TabletCartPanel({
 
   const handleWhatsApp = () => {
     const phone = branding?.whatsappNumber ?? "";
+    const orderItems = liveOrder ? liveOrder.items : items;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const msg = buildRoomOrderMessage(
       branding?.restaurantName ?? "Ashoka Hotel",
-      location?.label ?? "Room",
-      items.map((i) => ({
+      location?.label ?? liveOrder?.tableLabel ?? "Room",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      orderItems.map((i: any) => ({
         name: i.name,
         quantity: i.quantity,
         price: i.price,
         discountPrice: i.discountPrice,
       })),
-      total,
+      liveOrder ? liveOrder.total : total,
       instrValue || undefined,
     );
     window.open(buildWhatsAppUrl(phone, msg), "_blank");
   };
+
+  const handleStartNewOrder = () => {
+    setActiveOrderId(null);
+    setLiveOrder(null);
+    try {
+      localStorage.removeItem("ah_guest_active_order_id");
+    } catch {}
+  };
+
+  // Compute status step index
+  const getStatusStep = (status: string) => {
+    if (status === "delivered" || status === "cleared" || status === "paid") return 4;
+    if (status === "ready" || status === "partially_delivered") return 3;
+    if (status === "preparing" || status === "partially_ready") return 2;
+    if (status === "pending") return 1;
+    return 0;
+  };
+
+  const currentStep = liveOrder ? getStatusStep(liveOrder.status) : 0;
 
   return (
     <>
@@ -163,16 +247,22 @@ export default function TabletCartPanel({
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-amber-600" />
             <h2 className="font-extrabold text-base font-playfair tracking-wide text-slate-900">
-              {placedOrder ? "Order Status" : "Your Order"}
+              {liveOrder ? "Live Order Tracker" : "Your Order"}
             </h2>
-            {!placedOrder && items.length > 0 && (
+            {!liveOrder && items.length > 0 && (
               <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-bold shadow-xs">
                 {items.reduce((s, i) => s + i.quantity, 0)}
               </span>
             )}
+            {liveOrder && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            {!placedOrder && items.length > 0 && (
+            {!liveOrder && items.length > 0 && (
               <button
                 className="btn btn-ghost btn-xs text-rose-600 hover:bg-rose-50 font-bold"
                 onClick={clear}
@@ -195,35 +285,200 @@ export default function TabletCartPanel({
 
         {/* Items / Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {placedOrder ? (
-            /* Success confirmation */
-            <div className="py-6 flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
-                <CheckCircle2 className="w-10 h-10" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-lg font-bold font-playfair text-slate-900">Order Received!</h3>
-                <p className="text-xs text-slate-500">
-                  KOT <span className="font-mono font-bold text-amber-700">#{placedOrder.kotNumber}</span> · Table <span className="font-semibold text-slate-900">{placedOrder.tableLabel}</span>
-                </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/70 text-xs space-y-2 text-left">
-                <div className="flex items-center gap-2 text-amber-800 font-bold">
-                  <BellRing className="w-4 h-4 text-amber-600 animate-bounce" />
-                  <span>Captain Notified for Verification</span>
+          {liveOrder ? (
+            /* Live Order Status Tracking View */
+            <div className="py-2 space-y-4">
+              {/* Order header banner */}
+              <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-3xl p-5 shadow-lg relative overflow-hidden">
+                <div className="absolute right-3 top-3 opacity-15">
+                  <ChefHat className="w-24 h-24 text-white" />
                 </div>
-                <p className="text-slate-600 leading-relaxed font-medium">
-                  Captain is on the way to your table to verify and confirm your order. It will be sent to the kitchen immediately upon confirmation.
-                </p>
+                <div className="relative z-10 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full backdrop-blur-xs">
+                      {liveOrder.tableLabel}
+                    </span>
+                    <span className="text-xs font-mono font-black bg-black/20 px-2.5 py-0.5 rounded-full">
+                      #{liveOrder.kotNumber}
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-playfair font-black text-white pt-1">
+                    {currentStep === 4
+                      ? "Delivered & Enjoy!"
+                      : currentStep === 3
+                        ? "Food is Ready!"
+                        : currentStep === 2
+                          ? "Kitchen Preparing…"
+                          : currentStep === 1
+                            ? "Verified & Queued"
+                            : "Order Placed!"}
+                  </h3>
+                  <p className="text-xs text-amber-100 font-medium">
+                    {currentStep === 4
+                      ? "Your order has been delivered. Thank you!"
+                      : currentStep === 3
+                        ? "Staff is bringing your fresh meal right now."
+                        : currentStep === 2
+                          ? "Head Chef is cooking your fresh dishes."
+                          : currentStep === 1
+                            ? "Order verified. Sent to the kitchen line."
+                            : "Reception / Staff notified for quick confirmation."}
+                  </p>
+                </div>
               </div>
 
-              <button
-                onClick={onClose}
-                className="btn btn-primary bg-amber-500 hover:bg-amber-600 text-white font-bold w-full rounded-2xl h-11 border-none shadow-sm mt-2"
-              >
-                Done / Back to Menu
-              </button>
+              {/* Stepper Progress Card */}
+              <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+                    Live Progress
+                  </span>
+                  {isPolling && (
+                    <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                  )}
+                </div>
+
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 font-bold text-xs ${
+                        currentStep >= 0
+                          ? "bg-emerald-500 text-white shadow-xs"
+                          : "bg-slate-200 text-slate-500"
+                      }`}
+                    >
+                      ✓
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-slate-900">
+                        Order Received
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        KOT #{liveOrder.kotNumber} for {liveOrder.tableLabel}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 font-bold text-xs ${
+                        currentStep >= 1
+                          ? "bg-emerald-500 text-white shadow-xs"
+                          : "bg-amber-100 text-amber-800 animate-pulse border border-amber-300"
+                      }`}
+                    >
+                      {currentStep >= 1 ? "✓" : "2"}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-slate-900">
+                        Staff Verification
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {currentStep >= 1
+                          ? "Verified & queued to kitchen"
+                          : "Waiting for staff verification"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 font-bold text-xs ${
+                        currentStep >= 2
+                          ? "bg-emerald-500 text-white shadow-xs"
+                          : "bg-slate-100 text-slate-400 border border-slate-200"
+                      }`}
+                    >
+                      {currentStep >= 2 ? "✓" : "3"}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-slate-900">
+                        Kitchen Cooking
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Dishes being prepared fresh
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 font-bold text-xs ${
+                        currentStep >= 3
+                          ? "bg-emerald-500 text-white shadow-xs"
+                          : "bg-slate-100 text-slate-400 border border-slate-200"
+                      }`}
+                    >
+                      {currentStep >= 4 ? "✓" : "4"}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-slate-900">
+                        Food Delivery
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {currentStep >= 4
+                          ? "Delivered to room/table"
+                          : "Serving to your room/table"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2">
+                <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+                  Ordered Items ({liveOrder.items.length})
+                </h4>
+                <div className="divide-y divide-slate-200">
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {liveOrder.items.map((item: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="py-1.5 flex items-center justify-between text-xs"
+                    >
+                      <span className="font-bold text-slate-800">
+                        {item.quantity}× {item.name}
+                      </span>
+                      <span className="font-mono font-bold text-slate-700">
+                        {formatPrice(item.price * item.quantity)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-2 border-t border-slate-300 flex justify-between items-center text-sm font-black text-slate-900">
+                  <span>Total Amount</span>
+                  <span className="text-amber-800 font-mono text-base">
+                    {formatPrice(liveOrder.total)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="space-y-2 pt-1">
+                <button
+                  onClick={handleStartNewOrder}
+                  className="btn btn-outline border-amber-400 text-amber-900 hover:bg-amber-50 w-full rounded-2xl font-bold text-xs"
+                >
+                  + Place Another Order
+                </button>
+                {branding?.whatsappNumber && (
+                  <button
+                    onClick={handleWhatsApp}
+                    className="btn btn-success w-full gap-2 text-white font-bold rounded-2xl text-xs"
+                  >
+                    <MessageCircle className="w-4 h-4" /> Send Summary to WhatsApp
+                  </button>
+                )}
+                {branding?.callNumber && (
+                  <a
+                    href={`tel:${branding.callNumber}`}
+                    className="btn btn-outline btn-info w-full gap-2 font-bold rounded-2xl text-xs"
+                  >
+                    <Phone className="w-4 h-4" /> Call Reception Desk
+                  </a>
+                )}
+              </div>
             </div>
           ) : items.length === 0 ? (
             /* Empty Cart View */
@@ -237,7 +492,7 @@ export default function TabletCartPanel({
               </div>
               <button
                 onClick={onClose}
-                className="btn btn-sm bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl px-6 border-none shadow-sm"
+                className="btn btn-sm bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl px-6 border-none shadow-sm cursor-pointer"
               >
                 Back to Menu
               </button>
@@ -362,7 +617,7 @@ export default function TabletCartPanel({
         </div>
 
         {/* Footer Actions */}
-        {!placedOrder && items.length > 0 && (
+        {!liveOrder && items.length > 0 && (
           <div className="p-4 border-t border-slate-100 space-y-3 bg-amber-50/30">
             <div className="flex justify-between items-baseline">
               <span className="text-slate-600 text-sm font-bold">Total Amount</span>
@@ -371,42 +626,23 @@ export default function TabletCartPanel({
               </span>
             </div>
 
-            {isRoom ? (
-              <>
-                <button
-                  onClick={handleWhatsApp}
-                  className="btn bg-emerald-600 hover:bg-emerald-700 text-white font-bold w-full gap-2 rounded-2xl border-none shadow-sm"
-                >
-                  <MessageCircle className="w-4 h-4" /> Send via WhatsApp
-                </button>
-                {branding?.callNumber && (
-                  <a
-                    href={`tel:${branding.callNumber}`}
-                    className="btn btn-outline border-slate-300 text-slate-700 hover:bg-slate-100 w-full gap-2 btn-sm rounded-xl"
-                  >
-                    <Phone className="w-3.5 h-3.5" /> Call Reception
-                  </a>
-                )}
-              </>
-            ) : (
-              <button
-                onClick={handlePlaceOrder}
-                disabled={isSubmitting}
-                className="btn bg-amber-500 hover:bg-amber-600 text-white font-bold w-full gap-2 rounded-2xl shadow-sm text-sm h-12 border-none"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Placing Order…
-                  </>
-                ) : (
-                  <>
-                    <BellRing className="w-4 h-4" />
-                    Place Order (Send to Captain)
-                  </>
-                )}
-              </button>
-            )}
+            <button
+              onClick={handlePlaceOrder}
+              disabled={isSubmitting}
+              className="btn bg-amber-500 hover:bg-amber-600 text-white font-bold w-full gap-2 rounded-2xl shadow-sm text-sm h-12 border-none cursor-pointer disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Placing Order…
+                </>
+              ) : (
+                <>
+                  <BellRing className="w-4 h-4" />
+                  Place Order (Send to Reception)
+                </>
+              )}
+            </button>
           </div>
         )}
       </motion.div>

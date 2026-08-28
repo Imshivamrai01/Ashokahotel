@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import {
   AlertDialog,
@@ -30,8 +31,17 @@ export default function DeleteConfirmDialog({
   description = "This action cannot be undone.",
   trigger,
 }: DeleteConfirmDialogProps) {
+  const [open, setOpen] = useState(false);
+
+  const handleConfirm = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onConfirm();
+    setOpen(false);
+  };
+
   return (
-    <AlertDialog>
+    <AlertDialog open={open} onOpenChange={setOpen}>
       {trigger ? (
         <AlertDialogTrigger
           render={
@@ -50,7 +60,7 @@ export default function DeleteConfirmDialog({
             <Button
               variant="ghost"
               size="icon-xs"
-              className="text-destructive hover:text-destructive"
+              className="text-destructive hover:text-destructive cursor-pointer"
               disabled={isPending}
             />
           }
@@ -67,11 +77,12 @@ export default function DeleteConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel onClick={() => setOpen(false)}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
-            onClick={onConfirm}
+            onClick={handleConfirm}
             disabled={isPending}
+            className="cursor-pointer"
           >
             {isPending ? (
               <span className="loading loading-spinner loading-xs" />
