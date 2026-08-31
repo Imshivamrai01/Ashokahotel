@@ -130,7 +130,11 @@ function ItemCard({
   const qty = items.find((i) => i.itemId === item._id)?.quantity ?? 0;
   const isVeg =
     item.isVegetarian ?? (item as IItem & { isVeg?: boolean }).isVeg ?? true;
-  const hasDetail = !!(item.description || item.imageUrl || item.videoUrl);
+  const hasVariations = !!(item.variations && item.variations.length > 0);
+  const minVarPrice = hasVariations
+    ? Math.min(...item.variations!.map((v) => Number(v.price) || 0))
+    : (item.discountPrice ?? item.price);
+  const hasDetail = !!(item.description || item.imageUrl || item.videoUrl || hasVariations);
   return (
     <div
       className="flex gap-3 px-4 py-4"
@@ -165,8 +169,20 @@ function ItemCard({
               {item.description}
             </p>
           )}
-          <div className="flex items-baseline gap-1.5 mt-auto pt-1">
-            {item.discountPrice ? (
+          <div className="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
+            {hasVariations ? (
+              <>
+                <span
+                  className="font-bold text-sm"
+                  style={{ color: "var(--menu-accent)" }}
+                >
+                  From {formatPrice(minVarPrice)}
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-300/80">
+                  Customisable
+                </span>
+              </>
+            ) : item.discountPrice ? (
               <>
                 <span
                   className="font-bold text-sm"
@@ -237,15 +253,30 @@ function ItemCard({
         </button>
         {isRoom && (
           <div className="w-24">
-            <AddControl
-              qty={qty}
-              onAdd={onAdd}
-              itemId={item._id}
-              name={item.name}
-              itemImage={item.imageUrl}
-              updateQuantity={updateQuantity}
-              removeItem={removeItem}
-            />
+            {hasVariations ? (
+              <button
+                type="button"
+                onClick={onOpen}
+                className="w-full h-8 rounded-lg font-bold text-xs flex items-center justify-center gap-1 shadow-xs active:scale-95 transition-all cursor-pointer border border-amber-600/40"
+                style={{
+                  background: "var(--menu-accent)",
+                  color: "var(--menu-on-accent)",
+                }}
+              >
+                <span>Add</span>
+                <span className="text-[10px] font-bold">+</span>
+              </button>
+            ) : (
+              <AddControl
+                qty={qty}
+                onAdd={onAdd}
+                itemId={item._id}
+                name={item.name}
+                itemImage={item.imageUrl}
+                updateQuantity={updateQuantity}
+                removeItem={removeItem}
+              />
+            )}
           </div>
         )}
       </div>
@@ -270,6 +301,10 @@ function SearchResultItem({
   const qty = items.find((i) => i.itemId === item._id)?.quantity ?? 0;
   const isVeg =
     item.isVegetarian ?? (item as IItem & { isVeg?: boolean }).isVeg ?? true;
+  const hasVariations = !!(item.variations && item.variations.length > 0);
+  const minVarPrice = hasVariations
+    ? Math.min(...item.variations!.map((v) => Number(v.price) || 0))
+    : (item.discountPrice ?? item.price);
   return (
     <div
       className="flex items-center gap-3 p-3 rounded-xl"
@@ -309,25 +344,49 @@ function SearchResultItem({
               {item.name}
             </p>
           </div>
-          <p
-            className="text-xs font-bold"
-            style={{ color: "var(--menu-accent)" }}
-          >
-            {formatPrice(item.discountPrice ?? item.price)}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p
+              className="text-xs font-bold"
+              style={{ color: "var(--menu-accent)" }}
+            >
+              {hasVariations
+                ? `From ${formatPrice(minVarPrice)}`
+                : formatPrice(item.discountPrice ?? item.price)}
+            </p>
+            {hasVariations && (
+              <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200">
+                Customise
+              </span>
+            )}
+          </div>
         </div>
       </button>
       {isRoom && (
         <div className="w-24 shrink-0">
-          <AddControl
-            qty={qty}
-            onAdd={onAdd}
-            itemId={item._id}
-            name={item.name}
-            itemImage={item.imageUrl}
-            updateQuantity={updateQuantity}
-            removeItem={removeItem}
-          />
+          {hasVariations ? (
+            <button
+              type="button"
+              onClick={onOpen}
+              className="w-full h-8 rounded-lg font-bold text-xs flex items-center justify-center gap-1 shadow-xs active:scale-95 transition-all cursor-pointer border border-amber-600/40"
+              style={{
+                background: "var(--menu-accent)",
+                color: "var(--menu-on-accent)",
+              }}
+            >
+              <span>Add</span>
+              <span className="text-[10px] font-bold">+</span>
+            </button>
+          ) : (
+            <AddControl
+              qty={qty}
+              onAdd={onAdd}
+              itemId={item._id}
+              name={item.name}
+              itemImage={item.imageUrl}
+              updateQuantity={updateQuantity}
+              removeItem={removeItem}
+            />
+          )}
         </div>
       )}
     </div>

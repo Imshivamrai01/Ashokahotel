@@ -208,6 +208,7 @@ export default function CartDrawer({
           items: items.map((i) => ({
             itemId: i.itemId,
             quantity: i.quantity,
+            variationName: i.variationName,
             notes: undefined,
           })),
           specialInstructions: instrValue,
@@ -641,59 +642,74 @@ export default function CartDrawer({
                     </div>
                   )}
 
-                  {items.map((item) => (
-                    <div
-                      key={item.itemId}
-                      className="flex items-center gap-3 p-2.5 rounded-2xl bg-white border border-amber-900/10 shadow-xs"
-                    >
-                      {item.imageUrl && (
-                        <div className="relative w-14 h-14 shrink-0 rounded-xl overflow-hidden bg-amber-50 border border-amber-200/60">
-                          <Image
-                            src={item.imageUrl}
-                            alt={item.name}
-                            fill
-                            className="object-cover"
-                            sizes="56px"
-                          />
+                  {items.map((item) => {
+                    const itemKey =
+                      item.cartKey ||
+                      (item.variationName
+                        ? `${item.itemId}__${item.variationName}`
+                        : item.itemId);
+                    return (
+                      <div
+                        key={itemKey}
+                        className="flex items-center gap-3 p-2.5 rounded-2xl bg-white border border-amber-900/10 shadow-xs"
+                      >
+                        {item.imageUrl && (
+                          <div className="relative w-14 h-14 shrink-0 rounded-xl overflow-hidden bg-amber-50 border border-amber-200/60">
+                            <Image
+                              src={item.imageUrl}
+                              alt={item.name}
+                              fill
+                              className="object-cover"
+                              sizes="56px"
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-slate-900 truncate">
+                            {item.name}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {item.variationName && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                                {item.variationName}
+                              </span>
+                            )}
+                            <p className="text-xs text-amber-700 font-extrabold">
+                              {formatPrice(
+                                (item.discountPrice ?? item.price) *
+                                  item.quantity,
+                              )}
+                            </p>
+                          </div>
                         </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">
-                          {item.name}
-                        </p>
-                        <p className="text-xs text-amber-700 font-extrabold">
-                          {formatPrice(
-                            (item.discountPrice ?? item.price) * item.quantity,
-                          )}
-                        </p>
+                        <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 rounded-full px-1 py-0.5">
+                          <button
+                            onClick={() =>
+                              item.quantity === 1
+                                ? removeItem(itemKey)
+                                : updateQuantity(itemKey, item.quantity - 1)
+                            }
+                            className="w-9 h-9 flex items-center justify-center rounded-full text-slate-700 hover:bg-amber-100 active:scale-90 cursor-pointer touch-manipulation focus-visible:outline-none"
+                            aria-label="Decrease quantity"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-sm font-extrabold w-4 text-center tabular-nums text-slate-900">
+                            {item.quantity}
+                          </span>
+                          <button
+                            onClick={() =>
+                              updateQuantity(itemKey, item.quantity + 1)
+                            }
+                            className="w-9 h-9 flex items-center justify-center rounded-full text-slate-700 hover:bg-amber-100 active:scale-90 cursor-pointer touch-manipulation focus-visible:outline-none"
+                            aria-label="Increase quantity"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 rounded-full px-1 py-0.5">
-                        <button
-                          onClick={() =>
-                            item.quantity === 1
-                              ? removeItem(item.itemId)
-                              : updateQuantity(item.itemId, item.quantity - 1)
-                          }
-                          className="w-9 h-9 flex items-center justify-center rounded-full text-slate-700 hover:bg-amber-100 active:scale-90 cursor-pointer touch-manipulation focus-visible:outline-none"
-                          aria-label="Decrease quantity"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="text-sm font-extrabold w-4 text-center tabular-nums text-slate-900">
-                          {item.quantity}
-                        </span>
-                        <button
-                          onClick={() =>
-                            updateQuantity(item.itemId, item.quantity + 1)
-                          }
-                          className="w-9 h-9 flex items-center justify-center rounded-full text-slate-700 hover:bg-amber-100 active:scale-90 cursor-pointer touch-manipulation focus-visible:outline-none"
-                          aria-label="Increase quantity"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Special Instructions */}
                   <div className="mt-3">

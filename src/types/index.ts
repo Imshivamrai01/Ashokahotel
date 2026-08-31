@@ -288,6 +288,8 @@ export interface CartItem {
   quantity: number;
   imageUrl?: string;
   isVegetarian: boolean;
+  variationName?: string;
+  cartKey?: string;
 }
 
 export interface LocationContext {

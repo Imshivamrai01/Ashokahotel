@@ -35,8 +35,9 @@ import OrdersQueue from "@/components/cashier/OrdersQueue";
 import TableStatusGrid from "@/components/cashier/TableStatusGrid";
 import CashierInvoices from "@/components/cashier/CashierInvoices";
 import CancelOrderModal from "@/components/captain/CancelOrderModal";
-import KOTBillPrint from "@/components/cashier/KOTBillPrint";
+import KotPrintButton from "@/components/admin/KotPrintButton";
 import { useCaptainCallAlerts } from "@/hooks/useCaptainCallAlerts";
+import { UserCheck, Users, ChefHat } from "lucide-react";
 
 interface Props {
   staffName: string;
@@ -70,6 +71,9 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
   const [activeTab, setActiveTab] = useState<"live" | "billing" | "new_order" | "invoices">("live");
   const [liveFilter, setLiveFilter] = useState<"all" | "unconfirmed" | "active" | "delivered">("all");
   const [cancellingOrder, setCancellingOrder] = useState<IOrder | null>(null);
+  const [confirmingOrder, setConfirmingOrder] = useState<IOrder | null>(null);
+  const [assignCaptainId, setAssignCaptainId] = useState<string>("");
+  const [assignCaptainName, setAssignCaptainName] = useState<string>("");
 
   // New Order State
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
@@ -126,6 +130,39 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
   // 5. Room Call Alerts (Guest assistance calls from rooms/tables)
   const { alerts: roomCalls, dismiss: dismissRoomCall } = useCaptainCallAlerts();
 
+  // 6. Fetch Active Staff for Captain Assignment
+  const { data: staffList = [] } = useQuery<Array<{ _id: string; name: string; role: string }>>({
+    queryKey: ["staff-captains-list"],
+    queryFn: async () => {
+      const res = await fetch("/api/staff");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const availableCaptains = useMemo(() => {
+    return staffList.filter((s) => s.role === "captain" || s.role === "admin");
+  }, [staffList]);
+
+  const openConfirmModal = (order: IOrder) => {
+    setConfirmingOrder(order);
+    const existingCapt = availableCaptains.find((c) => c._id === order.captainId);
+    if (existingCapt) {
+      setAssignCaptainId(existingCapt._id);
+      setAssignCaptainName(existingCapt.name);
+    } else if (order.captainName) {
+      setAssignCaptainId(order.captainId || "");
+      setAssignCaptainName(order.captainName);
+    } else if (availableCaptains.length > 0) {
+      setAssignCaptainId(availableCaptains[0]._id);
+      setAssignCaptainName(availableCaptains[0].name);
+    } else {
+      setAssignCaptainId("");
+      setAssignCaptainName(staffName || "Captain");
+    }
+  };
+
   // Sound chime when new unconfirmed order arrives using /alert.webm
   const prevUnconfirmedCount = useRef(0);
   const unconfirmedOrders = useMemo(
@@ -155,18 +192,32 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
 
   // Mutations
   const confirmMutation = useMutation({
-    mutationFn: async (orderId: string) => {
+    mutationFn: async ({
+      orderId,
+      captainId,
+      captainName,
+    }: {
+      orderId: string;
+      captainId?: string;
+      captainName?: string;
+    }) => {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "captain_confirm" }),
+        body: JSON.stringify({
+          action: "captain_confirm",
+          captainId: captainId || undefined,
+          captainName: captainName || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to confirm order");
       return data;
     },
-    onSuccess: () => {
-      toast.success("Order confirmed! KOT sent to Kitchen Print Queue.");
+    onSuccess: (data) => {
+      const ord = data.order || {};
+      toast.success(`Order confirmed for ${ord.tableLabel || "room"}! KOT sent to Kitchen Print Queue.`);
+      setConfirmingOrder(null);
       queryClient.invalidateQueries({ queryKey: ["receptionist-orders"] });
       queryClient.invalidateQueries({ queryKey: ["cashier-tables"] });
     },
@@ -587,8 +638,18 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
                           )}
                         </div>
 
-                        {/* Footer: Subtotal & Actions */}
-                        <div className="pt-3 border-t border-slate-100 flex flex-col gap-2 mt-2">
+                        {/* Footer: Subtotal, Captain & Actions */}
+                        <div className="pt-2.5 border-t border-slate-100 flex flex-col gap-2 mt-2">
+                          <div className="flex items-center justify-between text-xs py-1 px-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
+                            <span className="text-slate-500 font-medium flex items-center gap-1">
+                              <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                              Captain:
+                            </span>
+                            <span className={`font-bold ${order.captainName ? "text-slate-800" : "text-amber-600 italic"}`}>
+                              {order.captainName || (isUnconfirmed ? "Not assigned" : "Captain")}
+                            </span>
+                          </div>
+
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-slate-500 font-medium">Order Total:</span>
                             <span className="font-mono font-black text-amber-700 text-sm">
@@ -600,7 +661,7 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
                           <div className="flex items-center gap-1.5 mt-1">
                             {isUnconfirmed ? (
                               <button
-                                onClick={() => confirmMutation.mutate(order._id)}
+                                onClick={() => openConfirmModal(order)}
                                 disabled={confirmMutation.isPending}
                                 className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-500/25 transition-all cursor-pointer"
                               >
@@ -623,7 +684,7 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
                               </div>
                             )}
 
-                            <KOTBillPrint order={order} hotelName="Ashoka Hotel" />
+                            <KotPrintButton order={order} hotelName="Ashoka Hotel" label="KOT" />
 
                             <button
                               onClick={() => {
@@ -967,6 +1028,126 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
             queryClient.invalidateQueries({ queryKey: ["cashier-tables"] });
           }}
         />
+      )}
+
+      {/* Confirm & Assign Captain Modal */}
+      {confirmingOrder && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setConfirmingOrder(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/25">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Confirm Order & Assign Captain</h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    {confirmingOrder.tableLabel} · KOT #{confirmingOrder.kotNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmingOrder(null)}
+                className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-500 hover:text-slate-900 flex items-center justify-center shadow-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Order Items Snippet */}
+              <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Order Items:</p>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto [scrollbar-width:thin]">
+                  {confirmingOrder.items.map((it, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-slate-800 truncate">
+                        {it.quantity} × {it.name} {it.variationName && `(${it.variationName})`}
+                      </span>
+                      <span className="font-mono text-slate-600 shrink-0">
+                        {formatPrice(it.price * it.quantity)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {confirmingOrder.specialInstructions && (
+                  <div className="mt-2.5 pt-2 border-t border-slate-200/80 text-[11px] text-amber-900 bg-amber-100/50 p-2 rounded-lg">
+                    <strong>Guest Special Note: </strong>{confirmingOrder.specialInstructions}
+                  </div>
+                )}
+              </div>
+
+              {/* Captain Assignment Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Assign Captain / Waiter:
+                </label>
+                <select
+                  value={assignCaptainId}
+                  onChange={(e) => {
+                    const cId = e.target.value;
+                    setAssignCaptainId(cId);
+                    const found = availableCaptains.find((c) => c._id === cId);
+                    setAssignCaptainName(found ? found.name : staffName || "Captain");
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-amber-500 shadow-2xs"
+                >
+                  {availableCaptains.length > 0 ? (
+                    <>
+                      <option value="">-- Choose Captain --</option>
+                      {availableCaptains.map((c) => (
+                        <option key={c._id} value={c._id}>
+                          🧑‍🍳 {c.name} ({c.role === "admin" ? "Admin / Captain" : "Captain"})
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <option value="">{staffName} (Reception Desk)</option>
+                  )}
+                </select>
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Captain name will be printed on the KOT Ticket and displayed on active orders.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmingOrder(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200/80 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() =>
+                  confirmMutation.mutate({
+                    orderId: confirmingOrder._id,
+                    captainId: assignCaptainId || undefined,
+                    captainName: assignCaptainName || undefined,
+                  })
+                }
+                disabled={confirmMutation.isPending}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-500/25 transition-all cursor-pointer"
+              >
+                {confirmMutation.isPending ? (
+                  <span className="loading loading-spinner loading-xs" />
+                ) : (
+                  <Check className="w-4 h-4 stroke-[3]" />
+                )}
+                <span>Confirm & Send KOT to Kitchen</span>
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
 
       <Toaster position="bottom-right" richColors />

@@ -25,20 +25,39 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = ItemSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.flatten() },
-      { status: 400 },
-    );
+    const flat = parsed.error.flatten();
+    const firstField = Object.entries(flat.fieldErrors)[0];
+    const errMsg = firstField
+      ? `${firstField[0]}: ${firstField[1]?.join(", ")}`
+      : flat.formErrors[0] || "Validation failed";
+    return NextResponse.json({ error: errMsg }, { status: 400 });
   }
+
   await connectDB();
   const { isActive, isVeg, name, ...rest } = parsed.data;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const item = await (Item.create as any)({
-    ...rest,
-    name,
-    slug: slugify(name),
-    isAvailable: isActive,
-    isVegetarian: isVeg,
-  });
-  return NextResponse.json(item, { status: 201 });
+
+  try {
+    let baseSlug = slugify(name) || "item";
+    let slug = baseSlug;
+    let count = 1;
+    while (await Item.exists({ slug })) {
+      slug = `${baseSlug}-${count++}`;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const item = await (Item.create as any)({
+      ...rest,
+      name,
+      slug,
+      isAvailable: isActive,
+      isVegetarian: isVeg,
+    });
+    return NextResponse.json(item, { status: 201 });
+  } catch (err: any) {
+    console.error("Failed to create menu item:", err);
+    return NextResponse.json(
+      { error: err.message || "Failed to create menu item" },
+      { status: 500 },
+    );
+  }
 }

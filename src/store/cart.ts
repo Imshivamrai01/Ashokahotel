@@ -30,30 +30,42 @@ export const useCartStore = create<CartStore>()(
         set({ locationCode: code, locationLabel: label }),
 
       addItem: (newItem) => {
-        const existing = get().items.find((i) => i.itemId === newItem.itemId);
+        const key = newItem.cartKey || (newItem.variationName ? `${newItem.itemId}__${newItem.variationName}` : newItem.itemId);
+        const itemWithKey = { ...newItem, cartKey: key };
+        const existing = get().items.find((i) => (i.cartKey || (i.variationName ? `${i.itemId}__${i.variationName}` : i.itemId)) === key);
         if (existing) {
           set({
             items: get().items.map((i) =>
-              i.itemId === newItem.itemId
-                ? { ...i, quantity: i.quantity + 1 }
+              (i.cartKey || (i.variationName ? `${i.itemId}__${i.variationName}` : i.itemId)) === key
+                ? { ...i, quantity: i.quantity + (newItem.quantity || 1) }
                 : i,
             ),
           });
         } else {
-          set({ items: [...get().items, { ...newItem, quantity: 1 }] });
+          set({ items: [...get().items, { ...itemWithKey, quantity: newItem.quantity || 1 }] });
         }
       },
 
-      removeItem: (itemId) =>
-        set({ items: get().items.filter((i) => i.itemId !== itemId) }),
+      removeItem: (cartKeyOrId) =>
+        set({
+          items: get().items.filter(
+            (i) => (i.cartKey || (i.variationName ? `${i.itemId}__${i.variationName}` : i.itemId)) !== cartKeyOrId && i.itemId !== cartKeyOrId,
+          ),
+        }),
 
-      updateQuantity: (itemId, qty) => {
+      updateQuantity: (cartKeyOrId, qty) => {
         if (qty <= 0) {
-          set({ items: get().items.filter((i) => i.itemId !== itemId) });
+          set({
+            items: get().items.filter(
+              (i) => (i.cartKey || (i.variationName ? `${i.itemId}__${i.variationName}` : i.itemId)) !== cartKeyOrId && i.itemId !== cartKeyOrId,
+            ),
+          });
         } else {
           set({
             items: get().items.map((i) =>
-              i.itemId === itemId ? { ...i, quantity: qty } : i,
+              (i.cartKey || (i.variationName ? `${i.itemId}__${i.variationName}` : i.itemId)) === cartKeyOrId || i.itemId === cartKeyOrId
+                ? { ...i, quantity: qty }
+                : i,
             ),
           });
         }

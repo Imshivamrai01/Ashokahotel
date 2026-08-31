@@ -4,10 +4,13 @@ import { connectDB } from "@/lib/db/mongoose";
 import Staff from "@/lib/db/models/Staff";
 
 // ─── GET /api/staff ───────────────────────────────────────────────────────────
-// Returns active staff list; admin only
+// Returns active staff list; accessible by staff members
 export async function GET() {
   const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (
+    !session?.user ||
+    !["admin", "receptionist", "captain", "cashier"].includes(session.user.role)
+  ) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

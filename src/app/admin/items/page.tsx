@@ -55,6 +55,7 @@ export default function ItemsPage() {
 
   const [editTarget, setEditTarget] = useState<Item | null>(null);
   const [open, setOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [filterCat, setFilterCat] = useState<string>("all");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
@@ -66,11 +67,9 @@ export default function ItemsPage() {
     setValue,
     watch,
     control,
+    getValues,
     formState: { errors, isSubmitting },
-  } = useForm<ItemInput>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(ItemSchema) as any,
-  });
+  } = useForm<ItemInput>();
   const varArr = useFieldArray({ control, name: "variations" });
   const addonArr = useFieldArray({ control, name: "addons" });
 
@@ -78,12 +77,19 @@ export default function ItemsPage() {
   const videoUrl = watch("videoUrl");
   const categoryId = watch("categoryId");
 
+  useEffect(() => {
+    register("categoryId");
+    register("imageUrl");
+    register("videoUrl");
+  }, [register]);
+
   const openAdd = () => {
     setEditTarget(null);
+    const defaultCat = categories[0]?._id ?? "";
     reset({
       name: "",
       price: 0,
-      categoryId: categories[0]?._id ?? "",
+      categoryId: defaultCat,
       isVeg: true,
       isActive: true,
       preparationTtlMinutes: 15,
@@ -91,7 +97,12 @@ export default function ItemsPage() {
       taxIncluded: false,
       tags: [],
       sortOrder: 0,
+      variations: [],
+      addons: [],
     });
+    if (defaultCat) {
+      setValue("categoryId", defaultCat);
+    }
     setOpen(true);
   };
 
@@ -113,7 +124,21 @@ export default function ItemsPage() {
 
   const openEdit = (item: Item) => {
     setEditTarget(item);
-    reset({ ...item, price: item.price });
+    reset({
+      ...item,
+      price: item.price,
+      variations: (item.variations ?? []).map((v) => ({
+        name: v.name,
+        price: v.price,
+        recipeScale: v.recipeScale ?? 1,
+      })),
+      addons: (item.addons ?? []).map((a) => ({
+        name: a.name,
+        price: a.price,
+        inventoryItemId: (a as any).inventoryItemId ? String((a as any).inventoryItemId) : "",
+        qtyBase: (a as any).qtyBase,
+      })),
+    });
     setOpen(true);
   };
 
@@ -188,23 +213,75 @@ export default function ItemsPage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["admin-items"] }),
   });
 
-  const onSubmit = async (data: ItemInput) => {
-    const url = editTarget
-      ? `/api/admin/items/${editTarget._id}`
-      : "/api/admin/items";
-    const res = await fetch(url, {
-      method: editTarget ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      toast.error(json.error?.message ?? json.error ?? "Save failed");
+  const onInvalid = (fieldErrors: any) => {
+    console.error("Item form validation errors:", fieldErrors);
+    const errorEntries = Object.entries(fieldErrors);
+    if (errorEntries.length > 0) {
+      const [field, err]: [string, any] = errorEntries[0];
+      const msg = err?.message || err?.root?.message || `${field} is invalid`;
+      toast.error(`Please check: ${msg}`);
+    } else {
+      toast.error("Please fill in all required fields properly");
+    }
+  };
+
+  const onSubmit = async (data?: ItemInput) => {
+    if (isSaving) return;
+    const raw = data && Object.keys(data).length > 0 ? data : getValues();
+    const effectiveCategoryId =
+      raw.categoryId || categoryId || categories[0]?._id || "";
+
+    if (!raw.name || !String(raw.name).trim()) {
+      toast.error("Please enter Item Name");
       return;
     }
-    toast.success(editTarget ? "Item updated" : "Item created");
-    setOpen(false);
-    qc.invalidateQueries({ queryKey: ["admin-items"] });
+    if (!effectiveCategoryId) {
+      toast.error("Please create/select a Category first");
+      return;
+    }
+
+    const parsed = ItemSchema.safeParse({
+      ...raw,
+      categoryId: effectiveCategoryId,
+    });
+    if (!parsed.success) {
+      const flat = parsed.error.flatten();
+      const firstField = Object.entries(flat.fieldErrors)[0];
+      const msg = firstField
+        ? `${firstField[0]}: ${firstField[1]?.join(", ")}`
+        : flat.formErrors[0] || "Please check the form inputs";
+      toast.error(msg);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const payload = parsed.data;
+      const url = editTarget
+        ? `/api/admin/items/${editTarget._id}`
+        : "/api/admin/items";
+      const res = await fetch(url, {
+        method: editTarget ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        const errorText =
+          typeof json.error === "string"
+            ? json.error
+            : json.error?.message || JSON.stringify(json.error) || "Save failed";
+        toast.error(errorText);
+        return;
+      }
+      toast.success(editTarget ? "Item updated successfully!" : "Item created successfully!");
+      setOpen(false);
+      qc.invalidateQueries({ queryKey: ["admin-items"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save item");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getCatName = (id: string) =>
@@ -452,7 +529,14 @@ export default function ItemsPage() {
         mode={editTarget ? "edit" : "add"}
         maxWidth="sm:max-w-2xl"
       >
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit();
+          }}
+          className="space-y-6"
+        >
           {/* ── Section: Basic Info ── */}
           <div className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-widest text-base-content/40">
@@ -626,32 +710,65 @@ export default function ItemsPage() {
           {/* ── Section: Variations & Add-ons ── */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-widest text-base-content/40">
-                Variations (sizes)
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="xs"
-                onClick={() =>
-                  varArr.append({ name: "", price: 0, recipeScale: 1 })
-                }
-              >
-                <Plus className="w-3.5 h-3.5" /> Add
-              </Button>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-base-content/40">
+                  Variations (Half / Full / Sizes)
+                </p>
+                <p className="text-[11px] text-base-content/50">
+                  Optional: If dish has sizes, variation price replaces base price.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  className="bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 font-bold"
+                  onClick={() => {
+                    const baseP = Number(watch("price")) || 0;
+                    const halfP = Math.round(baseP > 0 ? baseP * 0.6 : 0);
+                    varArr.replace([
+                      { name: "Half", price: halfP, recipeScale: 0.6 },
+                      { name: "Full", price: baseP, recipeScale: 1 },
+                    ]);
+                  }}
+                >
+                  + Half / Full (Preset)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() =>
+                    varArr.append({ name: "", price: 0, recipeScale: 1 })
+                  }
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add
+                </Button>
+              </div>
             </div>
+            {varArr.fields.length > 0 && (
+              <div className="flex items-center gap-2 px-1 text-[11px] font-bold text-base-content/50">
+                <span className="flex-1">Size / Portion Name</span>
+                <span className="w-24">Price (₹)</span>
+                <span className="w-20" title="Inventory Recipe Scale (Half = 0.6, Full = 1.0)">Scale</span>
+                <span className="w-6"></span>
+              </div>
+            )}
             {varArr.fields.map((f, i) => (
               <div key={f.id} className="flex items-center gap-2">
                 <Input
                   {...register(`variations.${i}.name`)}
-                  placeholder="e.g. Half"
+                  placeholder="e.g. Half or Full"
                   className="flex-1"
                 />
                 <Input
                   {...register(`variations.${i}.price`, { valueAsNumber: true })}
                   type="number"
-                  placeholder="price"
-                  className="w-24"
+                  min={0}
+                  step="1"
+                  placeholder="Price"
+                  className="w-24 font-bold text-amber-700"
                 />
                 <Input
                   {...register(`variations.${i}.recipeScale`, {
@@ -659,7 +776,8 @@ export default function ItemsPage() {
                   })}
                   type="number"
                   step="0.1"
-                  placeholder="scale"
+                  min={0}
+                  placeholder="1.0"
                   title="Recipe scale: Half=0.6, Full=1"
                   className="w-20"
                 />
@@ -667,9 +785,10 @@ export default function ItemsPage() {
                   type="button"
                   variant="ghost"
                   size="icon-xs"
+                  className="text-rose-500 hover:bg-rose-50"
                   onClick={() => varArr.remove(i)}
                 >
-                  <Check className="hidden" />✕
+                  ✕
                 </Button>
               </div>
             ))}
@@ -727,12 +846,13 @@ export default function ItemsPage() {
               Cancel
             </Button>
             <Button
-              type="submit"
+              type="button"
               size="sm"
-              disabled={isSubmitting}
-              className="gap-2"
+              disabled={isSaving}
+              onClick={() => onSubmit()}
+              className="gap-2 cursor-pointer"
             >
-              {isSubmitting ? (
+              {isSaving ? (
                 <span className="loading loading-spinner loading-xs" />
               ) : (
                 <Check className="w-3.5 h-3.5" />

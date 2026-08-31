@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import Image from "next/image";
 import { X, Star } from "lucide-react";
@@ -30,11 +31,33 @@ export default function ItemDetailSheet({
   const reduceMotion = useReducedMotion();
   const { items, addItem, updateQuantity, removeItem } = useCartStore();
   const triggerFly = useFlyToCartStore((s) => s.triggerFly);
-  const qty = item
-    ? (items.find((i) => i.itemId === item._id)?.quantity ?? 0)
-    : 0;
 
-  const effectivePrice = item?.discountPrice ?? item?.price ?? 0;
+  const [selectedVarIndex, setSelectedVarIndex] = useState<number>(0);
+
+  useEffect(() => {
+    setSelectedVarIndex(0);
+  }, [item?._id]);
+
+  const hasVariations = !!(item?.variations && item.variations.length > 0);
+  const activeVar = hasVariations && item?.variations ? item.variations[selectedVarIndex] : null;
+
+  const effectivePrice = activeVar
+    ? activeVar.price
+    : (item?.discountPrice ?? item?.price ?? 0);
+
+  const cartKey = item
+    ? activeVar
+      ? `${item._id}__${activeVar.name}`
+      : item._id
+    : "";
+
+  const qty = item
+    ? (items.find(
+        (i) =>
+          (i.cartKey || (i.variationName ? `${i.itemId}__${i.variationName}` : i.itemId)) ===
+          cartKey,
+      )?.quantity ?? 0)
+    : 0;
 
   return (
     <AnimatePresence>
@@ -139,7 +162,7 @@ export default function ItemDetailSheet({
                 >
                   {formatPrice(effectivePrice)}
                 </span>
-                {item.discountPrice && (
+                {!hasVariations && item.discountPrice && (
                   <>
                     <span
                       className="text-sm line-through"
@@ -169,6 +192,49 @@ export default function ItemDetailSheet({
                 </p>
               )}
 
+              {/* Variations / Portion Selector */}
+              {hasVariations && item.variations && (
+                <div className="mb-5 p-3 rounded-2xl bg-amber-50/60 border border-amber-200/80">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-950 mb-2.5 flex items-center justify-between">
+                    <span>Select Portion / Size</span>
+                    <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-semibold">
+                      Required
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {item.variations.map((v, idx) => {
+                      const isSelected = idx === selectedVarIndex;
+                      return (
+                        <button
+                          key={v.name}
+                          type="button"
+                          onClick={() => setSelectedVarIndex(idx)}
+                          className={`flex items-center justify-between p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? "border-amber-600 bg-white text-amber-950 font-bold shadow-xs"
+                              : "border-amber-200/60 bg-white/70 hover:border-amber-300 text-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                isSelected ? "border-amber-600 bg-amber-600" : "border-slate-300"
+                              }`}
+                            >
+                              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                            <span className="text-sm truncate">{v.name}</span>
+                          </div>
+                          <span className="text-sm font-extrabold text-amber-900 shrink-0 ml-1">
+                            {formatPrice(v.price)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Add control */}
               {isRoom &&
                 (qty === 0 ? (
@@ -177,32 +243,38 @@ export default function ItemDetailSheet({
                       triggerFly(e.currentTarget, item.imageUrl);
                       addItem({
                         itemId: item._id,
-                        name: item.name,
-                        price: item.price,
-                        discountPrice: item.discountPrice,
+                        name: activeVar ? `${item.name} (${activeVar.name})` : item.name,
+                        price: effectivePrice,
+                        discountPrice: hasVariations ? undefined : item.discountPrice,
                         quantity: 1,
                         imageUrl: item.imageUrl,
                         isVegetarian: item.isVegetarian,
+                        variationName: activeVar ? activeVar.name : undefined,
+                        cartKey,
                       });
                     }}
-                    className="w-full min-h-12 rounded-2xl font-semibold text-sm cursor-pointer touch-manipulation active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--menu-accent)]/70"
+                    className="w-full min-h-12 rounded-2xl font-bold text-sm cursor-pointer touch-manipulation active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--menu-accent)]/70 shadow-md flex items-center justify-center gap-2"
                     style={{
                       background: "var(--menu-accent)",
                       color: "var(--menu-on-accent)",
                     }}
                   >
-                    Add to Order +
+                    <span>
+                      Add {activeVar ? `${activeVar.name} portion` : "to Order"}
+                    </span>
+                    <span>·</span>
+                    <span>{formatPrice(effectivePrice)}</span>
                   </button>
                 ) : (
                   <div
-                    className="flex items-center justify-between rounded-2xl overflow-hidden min-h-12"
+                    className="flex items-center justify-between rounded-2xl overflow-hidden min-h-12 shadow-md"
                     style={{ background: "var(--menu-accent)" }}
                   >
                     <button
                       onClick={() =>
                         qty === 1
-                          ? removeItem(item._id)
-                          : updateQuantity(item._id, qty - 1)
+                          ? removeItem(cartKey)
+                          : updateQuantity(cartKey, qty - 1)
                       }
                       aria-label="Decrease quantity"
                       className="min-w-14 h-12 flex items-center justify-center text-xl font-bold cursor-pointer touch-manipulation active:opacity-70"
@@ -210,16 +282,23 @@ export default function ItemDetailSheet({
                     >
                       −
                     </button>
-                    <span
-                      className="font-bold tabular-nums"
-                      style={{ color: "var(--menu-on-accent)" }}
-                    >
-                      {qty} in order
-                    </span>
+                    <div className="flex flex-col items-center">
+                      <span
+                        className="font-bold tabular-nums text-base leading-tight"
+                        style={{ color: "var(--menu-on-accent)" }}
+                      >
+                        {qty} in Cart
+                      </span>
+                      {activeVar && (
+                        <span className="text-[11px] opacity-80" style={{ color: "var(--menu-on-accent)" }}>
+                          ({activeVar.name})
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={(e) => {
                         triggerFly(e.currentTarget, item.imageUrl);
-                        updateQuantity(item._id, qty + 1);
+                        updateQuantity(cartKey, qty + 1);
                       }}
                       aria-label="Increase quantity"
                       className="min-w-14 h-12 flex items-center justify-center text-xl font-bold cursor-pointer touch-manipulation active:opacity-70"

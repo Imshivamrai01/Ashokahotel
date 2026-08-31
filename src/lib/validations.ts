@@ -96,11 +96,29 @@ export type CategoryInput = z.infer<typeof CategorySchema>;
 // ─── Item ────────────────────────────────────────────────────────────────────
 export const ItemSchema = z.object({
   name: z.string().min(1, "Item name is required").max(100),
-  description: z.string().max(500).optional(),
-  price: z.number().positive("Price must be greater than 0"),
+  description: z
+    .preprocess(
+      (v) => (v === null || v === undefined ? "" : String(v).trim()),
+      z.string().max(500).optional().or(z.literal("")),
+    )
+    .default(""),
+  price: z.preprocess(
+    (v) => (v === "" || v === null || Number.isNaN(Number(v)) ? 0 : Number(v)),
+    z.number().min(0, "Price must be greater than or equal to 0"),
+  ),
   categoryId: z.string().min(1, "Category is required"),
-  imageUrl: z.string().url("Invalid image URL").optional().or(z.literal("")),
-  videoUrl: z.string().url("Invalid video URL").optional().or(z.literal("")),
+  imageUrl: z
+    .preprocess(
+      (v) => (v === null || v === undefined ? "" : String(v).trim()),
+      z.string().url("Invalid image URL").optional().or(z.literal("")),
+    )
+    .default(""),
+  videoUrl: z
+    .preprocess(
+      (v) => (v === null || v === undefined ? "" : String(v).trim()),
+      z.string().url("Invalid video URL").optional().or(z.literal("")),
+    )
+    .default(""),
   // Item-level tax is NOT used in billing (bill GST is applied at order level
   // from branding). These two are stored per item for FUTURE use only.
   // Blank number input → NaN; coerce blank/NaN → 0 so the save never fails.
@@ -108,37 +126,90 @@ export const ItemSchema = z.object({
     (v) =>
       v === "" || v === null || (typeof v === "number" && Number.isNaN(v))
         ? 0
-        : v,
+        : Number(v),
     z.number().min(0).max(100),
   ).default(0),
   taxIncluded: z.boolean().default(false),
-  hsn: z.string().max(20).optional().or(z.literal("")),
+  hsn: z
+    .preprocess(
+      (v) => (v === null || v === undefined ? "" : String(v).trim()),
+      z.string().max(20).optional().or(z.literal("")),
+    )
+    .default(""),
   variations: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(40),
-        price: z.number().min(0),
-        recipeScale: z.number().min(0).default(1),
-      }),
+    .preprocess(
+      (val) => {
+        if (!Array.isArray(val)) return [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cleaned = val
+          .filter((v: any) => v && (String(v.name || "").trim() || (Number(v.price) > 0)))
+          .map((v: any) => ({
+            name: String(v.name || "").trim(),
+            price: Number.isNaN(Number(v.price)) ? 0 : Number(v.price),
+            recipeScale:
+              v.recipeScale === "" || v.recipeScale == null || Number.isNaN(Number(v.recipeScale))
+                ? 1
+                : Number(v.recipeScale),
+          }));
+        return cleaned;
+      },
+      z.array(
+        z.object({
+          name: z.string().min(1, "Variation name is required").max(40),
+          price: z.number().min(0, "Price must be >= 0"),
+          recipeScale: z.number().min(0).default(1),
+        }),
+      ).default([]),
     )
-    .optional(),
+    .default([]),
   addons: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(40),
-        price: z.number().min(0),
-        inventoryItemId: z.string().optional().or(z.literal("")),
-        qtyBase: z.number().min(0).optional(),
-      }),
+    .preprocess(
+      (val) => {
+        if (!Array.isArray(val)) return [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cleaned = val
+          .filter((v: any) => v && (String(v.name || "").trim() || (Number(v.price) > 0)))
+          .map((v: any) => ({
+            name: String(v.name || "").trim(),
+            price: Number.isNaN(Number(v.price)) ? 0 : Number(v.price),
+            inventoryItemId: v.inventoryItemId || undefined,
+            qtyBase:
+              v.qtyBase === "" || v.qtyBase == null || Number.isNaN(Number(v.qtyBase))
+                ? undefined
+                : Number(v.qtyBase),
+          }));
+        return cleaned;
+      },
+      z.array(
+        z.object({
+          name: z.string().min(1, "Add-on name is required").max(40),
+          price: z.number().min(0, "Price must be >= 0"),
+          inventoryItemId: z.string().optional().or(z.literal("")),
+          qtyBase: z.number().min(0).optional(),
+        }),
+      ).default([]),
     )
-    .optional(),
+    .default([]),
   isVeg: z.boolean().default(true),
   isActive: z.boolean().default(true),
   isFeatured: z.boolean().default(false),
-  preparationTtlMinutes: z.number().int().min(1).max(120).default(15),
-  tags: z.array(z.string().max(30)).max(10).default([]),
-  allergens: z.array(z.string().max(30)).max(10).default([]),
-  sortOrder: z.number().int().min(0).default(0),
+  preparationTtlMinutes: z.preprocess(
+    (v) =>
+      v === "" || v === null || Number.isNaN(Number(v)) ? 15 : Number(v),
+    z.number().int().min(1).max(120).default(15),
+  ),
+  tags: z.preprocess(
+    (v) => (Array.isArray(v) ? v : []),
+    z.array(z.string().max(30)).max(10).default([]),
+  ),
+  allergens: z.preprocess(
+    (v) => (Array.isArray(v) ? v : []),
+    z.array(z.string().max(30)).max(10).default([]),
+  ),
+  sortOrder: z.preprocess(
+    (v) => (v === "" || v === null || Number.isNaN(Number(v)) ? 0 : Number(v)),
+    z.number().int().min(0).default(0),
+  ),
 });
 
 export type ItemInput = z.infer<typeof ItemSchema>;

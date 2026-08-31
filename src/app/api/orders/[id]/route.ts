@@ -331,7 +331,7 @@ export async function PATCH(
       });
     }
 
-    // Captain/Admin: verify & confirm customer-placed order -> releases to Kitchen & KOT Print Queue
+    // Captain/Admin/Receptionist: verify & confirm customer-placed order -> releases to Kitchen & KOT Print Queue
     if (body.action === "captain_confirm") {
       if (!["admin", "captain", "cashier", "receptionist"].includes(session.user.role)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -341,16 +341,27 @@ export async function PATCH(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       order.confirmedByCaptainId = session.user.id as any;
       order.confirmedByCaptainName = session.user.name ?? "Captain";
-      if (!order.captainId) {
+
+      if (body.captainId) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        order.captainId = body.captainId as any;
+        order.captainName = body.captainName || "Captain";
+      } else if (body.captainName) {
+        order.captainName = body.captainName;
+      } else if (!order.captainId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         order.captainId = session.user.id as any;
         order.captainName = session.user.name ?? "Captain";
       }
+
       order.confirmedAt = now;
       order.status = "pending";
       for (const item of order.items) {
         if (!item.itemStatus || (item.itemStatus as string) === "pending_captain") {
           item.itemStatus = "pending";
+        }
+        if (!item.orderedAt) {
+          item.orderedAt = now;
         }
       }
 
@@ -751,71 +762,6 @@ export async function PATCH(
         );
       });
       return NextResponse.json({ success: true });
-    }
-
-    // Captain / Admin: verify & confirm customer self-order
-    if (body.action === "captain_confirm") {
-      if (!["admin", "captain", "receptionist"].includes(session.user.role)) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-      }
-      if (order.status !== "pending_captain" && order.isCaptainConfirmed) {
-        return NextResponse.json(
-          { error: "Order is already confirmed" },
-          { status: 400 },
-        );
-      }
-
-      const now = new Date();
-      const captainName = session.user.name || "Captain";
-
-      await withTransaction(async (s) => {
-        order.isCaptainConfirmed = true;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        order.captainId = session.user.id as any;
-        order.captainName = captainName;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        order.confirmedByCaptainId = session.user.id as any;
-        order.confirmedByCaptainName = captainName;
-        order.confirmedAt = now;
-        order.status = "pending";
-
-        // Mark items as pending with current timestamp if needed
-        for (const item of order.items) {
-          if (item.itemStatus === "pending" && !item.orderedAt) {
-            item.orderedAt = now;
-          }
-        }
-
-        // Deduct inventory for items in order
-        await deductForOrder(order, session.user.id, s);
-
-        await order.save({ session: s });
-
-        // Ensure table is marked occupied
-        await Location.findByIdAndUpdate(
-          order.tableId,
-          { isOccupied: true },
-          { session: s },
-        );
-      });
-
-      // Auto-disable any 86 out-of-stock items asynchronously
-      autoDisableOutOfStock(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        [...new Set(order.items.map((i: any) => String(i.itemId)))] as string[],
-      ).catch(() => null);
-
-      return NextResponse.json({
-        success: true,
-        order: {
-          _id: order._id,
-          kotNumber: order.kotNumber,
-          tableLabel: order.tableLabel,
-          captainName: order.captainName,
-          status: order.status,
-          isCaptainConfirmed: order.isCaptainConfirmed,
-        },
-      });
     }
 
     // Admin: edit items of an already-placed order (add / remove / change qty).

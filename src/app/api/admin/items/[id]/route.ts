@@ -18,27 +18,46 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const body = await req.json();
   const parsed = ItemSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.flatten() },
-      { status: 400 },
-    );
+    const flat = parsed.error.flatten();
+    const firstField = Object.entries(flat.fieldErrors)[0];
+    const errMsg = firstField
+      ? `${firstField[0]}: ${firstField[1]?.join(", ")}`
+      : flat.formErrors[0] || "Validation failed";
+    return NextResponse.json({ error: errMsg }, { status: 400 });
   }
+
   await connectDB();
   const { isActive, isVeg, name, ...rest } = parsed.data;
-  const updated = await Item.findByIdAndUpdate(
-    id,
-    {
-      ...rest,
-      name,
-      slug: slugify(name),
-      isAvailable: isActive,
-      isVegetarian: isVeg,
-    },
-    { new: true },
-  );
-  if (!updated)
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(updated);
+
+  try {
+    let baseSlug = slugify(name) || "item";
+    let slug = baseSlug;
+    let count = 1;
+    while (await Item.exists({ slug, _id: { $ne: id } })) {
+      slug = `${baseSlug}-${count++}`;
+    }
+
+    const updated = await Item.findByIdAndUpdate(
+      id,
+      {
+        ...rest,
+        name,
+        slug,
+        isAvailable: isActive,
+        isVegetarian: isVeg,
+      },
+      { new: true },
+    );
+    if (!updated)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(updated);
+  } catch (err: any) {
+    console.error("Failed to update item:", err);
+    return NextResponse.json(
+      { error: err.message || "Failed to update item" },
+      { status: 500 },
+    );
+  }
 }
 
 // Partial update — only touches fields explicitly present in the body
@@ -75,6 +94,31 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ("isFeatured" in body) patch.isFeatured = Boolean(body.isFeatured);
   if ("preparationTtlMinutes" in body)
     patch.preparationTtlMinutes = Number(body.preparationTtlMinutes);
+  if ("variations" in body) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    patch.variations = Array.isArray(body.variations)
+      ? body.variations
+          .filter((v: any) => v && (String(v.name || "").trim() || Number(v.price) > 0))
+          .map((v: any) => ({
+            name: String(v.name || "").trim(),
+            price: Number(v.price) || 0,
+            recipeScale: Number(v.recipeScale) || 1,
+          }))
+      : [];
+  }
+  if ("addons" in body) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    patch.addons = Array.isArray(body.addons)
+      ? body.addons
+          .filter((a: any) => a && (String(a.name || "").trim() || Number(a.price) > 0))
+          .map((a: any) => ({
+            name: String(a.name || "").trim(),
+            price: Number(a.price) || 0,
+            inventoryItemId: a.inventoryItemId || undefined,
+            qtyBase: a.qtyBase != null ? Number(a.qtyBase) : undefined,
+          }))
+      : [];
+  }
 
   if (Object.keys(patch).length === 0)
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });

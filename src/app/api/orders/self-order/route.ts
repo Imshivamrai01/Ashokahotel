@@ -129,13 +129,26 @@ export async function POST(req: NextRequest) {
       if (!it || !it.isAvailable) continue;
 
       const qty = Math.max(1, Math.min(99, Number(reqItem.quantity) || 1));
-      const price = it.discountPrice ?? it.price;
+      let price = it.discountPrice ?? it.price;
+      let itemName = it.name;
+
+      if (reqItem.variationName && Array.isArray(it.variations) && it.variations.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const foundVar = it.variations.find(
+          (v: any) => v.name?.toLowerCase() === reqItem.variationName?.toLowerCase(),
+        );
+        if (foundVar) {
+          price = Number(foundVar.price) || price;
+          itemName = `${it.name} (${foundVar.name})`;
+        }
+      }
 
       resolvedItems.push({
         itemId: it._id,
-        name: it.name,
+        name: itemName,
         price,
         quantity: qty,
+        variationName: reqItem.variationName,
         notes: reqItem.notes?.trim() || undefined,
         isVegetarian: !!it.isVegetarian,
         preparationTtlMinutes: it.preparationTtlMinutes ?? 15,

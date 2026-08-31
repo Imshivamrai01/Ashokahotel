@@ -101,10 +101,16 @@ function TabletItemCard({
     });
 
   const hasVideo = !!item.videoUrl;
+  const hasVariations = !!(item.variations && item.variations.length > 0);
+  const minVarPrice = hasVariations
+    ? Math.min(...item.variations!.map((v) => Number(v.price) || 0))
+    : (item.discountPrice ?? item.price);
+
   const hasDetails = !!(
     item.imageUrl ||
     item.videoUrl ||
-    (item.description && item.description.trim().length > 0)
+    (item.description && item.description.trim().length > 0) ||
+    hasVariations
   );
 
   return (
@@ -191,9 +197,11 @@ function TabletItemCard({
         <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-100">
           <div className="flex items-baseline gap-1">
             <span className="text-amber-700 text-xs sm:text-sm font-black font-mono tracking-tight leading-none">
-              {formatPrice(item.discountPrice ?? item.price)}
+              {hasVariations
+                ? `From ${formatPrice(minVarPrice)}`
+                : formatPrice(item.discountPrice ?? item.price)}
             </span>
-            {item.discountPrice && (
+            {!hasVariations && item.discountPrice && (
               <span className="text-slate-400 text-[10px] line-through font-mono leading-none">
                 {formatPrice(item.price)}
               </span>
@@ -205,7 +213,16 @@ function TabletItemCard({
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            {qty === 0 ? (
+            {hasVariations ? (
+              <button
+                type="button"
+                onClick={() => openVideo(item)}
+                aria-label={`Select ${item.name} portion`}
+                className="bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold px-2.5 sm:px-3 py-1 rounded-lg sm:rounded-xl text-[11px] sm:text-xs cursor-pointer touch-manipulation transition-all shadow-xs flex items-center gap-1 leading-normal"
+              >
+                ADD +
+              </button>
+            ) : qty === 0 ? (
               <button
                 type="button"
                 onClick={(e) => {
