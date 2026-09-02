@@ -74,12 +74,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { tableId, tableLabel, items, specialInstructions } = body as {
+    const { tableId, tableLabel, items, specialInstructions, captainId, captainName } = body as {
       tableId?: string;
       tableLabel?: string;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       items?: any[];
       specialInstructions?: string;
+      captainId?: string;
+      captainName?: string;
     };
 
     if (!tableId || !tableLabel || !items?.length) {
@@ -250,8 +252,8 @@ export async function POST(req: NextRequest) {
                 kotDate,
                 tableId,
                 tableLabel,
-                captainId: session.user.id,
-                captainName: session.user.name ?? "Captain",
+                captainId: captainId || session.user.id,
+                captainName: captainName || (session.user.name ?? "Captain"),
                 placedByRole: session.user.role,
                 status: "pending",
                 items: orderItems,

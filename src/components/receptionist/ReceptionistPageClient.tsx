@@ -83,6 +83,8 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
   const [vegOnly, setVegOnly] = useState(false);
   const [cart, setCart] = useState<Array<{ item: IItem; quantity: number; notes?: string }>>([]);
   const [orderNotes, setOrderNotes] = useState("");
+  const [newOrderCaptainId, setNewOrderCaptainId] = useState<string>("");
+  const [newOrderCaptainName, setNewOrderCaptainName] = useState<string>("");
 
   // 1. Fetch All Active Orders for Live Feed
   const { data: allOrders = [], isLoading: loadingOrders } = useQuery<IOrder[]>({
@@ -259,6 +261,8 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
       const payload = {
         tableId: selectedRoomId,
         tableLabel: selectedRoomLabel,
+        captainId: newOrderCaptainId || undefined,
+        captainName: newOrderCaptainName || staffName || "Reception",
         items: cart.map((c) => ({
           itemId: c.item._id,
           quantity: c.quantity,
@@ -640,15 +644,30 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
 
                         {/* Footer: Subtotal, Captain & Actions */}
                         <div className="pt-2.5 border-t border-slate-100 flex flex-col gap-2 mt-2">
-                          <div className="flex items-center justify-between text-xs py-1 px-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
-                            <span className="text-slate-500 font-medium flex items-center gap-1">
-                              <UserCheck className="w-3.5 h-3.5 text-amber-600" />
-                              Captain:
-                            </span>
-                            <span className={`font-bold ${order.captainName ? "text-slate-800" : "text-amber-600 italic"}`}>
-                              {order.captainName || (isUnconfirmed ? "Not assigned" : "Captain")}
-                            </span>
-                          </div>
+                          {isUnconfirmed ? (
+                            <button
+                              onClick={() => openConfirmModal(order)}
+                              className="flex items-center justify-between text-xs py-1.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100/80 border border-amber-300/80 text-amber-950 transition-colors cursor-pointer group"
+                            >
+                              <span className="font-bold flex items-center gap-1.5 text-amber-900">
+                                <UserCheck className="w-3.5 h-3.5 text-amber-700" />
+                                Assign Captain:
+                              </span>
+                              <span className="font-black text-amber-700 underline group-hover:text-amber-900">
+                                {order.captainName || "Select Captain ➔"}
+                              </span>
+                            </button>
+                          ) : (
+                            <div className="flex items-center justify-between text-xs py-1 px-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
+                              <span className="text-slate-500 font-medium flex items-center gap-1">
+                                <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                                Captain:
+                              </span>
+                              <span className={`font-bold ${order.captainName ? "text-slate-800" : "text-amber-600 italic"}`}>
+                                {order.captainName || "Captain"}
+                              </span>
+                            </div>
+                          )}
 
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-slate-500 font-medium">Order Total:</span>
@@ -977,8 +996,29 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
                 )}
               </div>
 
-              {/* Special Instructions Note */}
+              {/* Captain / Waiter Assignment in POS */}
               <div className="pt-3 border-t border-slate-100">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Assign Captain / Waiter:
+                </label>
+                <select
+                  value={newOrderCaptainId}
+                  onChange={(e) => {
+                    const cId = e.target.value;
+                    setNewOrderCaptainId(cId);
+                    const found = availableCaptains.find((c) => c._id === cId);
+                    setNewOrderCaptainName(found ? found.name : staffName || "Captain");
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500 mb-2.5 shadow-2xs"
+                >
+                  <option value="">-- Assign Captain (Optional) --</option>
+                  {availableCaptains.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      🧑‍🍳 {c.name} ({c.role === "admin" ? "Admin / Captain" : "Captain"})
+                    </option>
+                  ))}
+                </select>
+
                 <input
                   type="text"
                   value={orderNotes}

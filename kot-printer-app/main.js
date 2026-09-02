@@ -35,7 +35,7 @@ const store = new Store({
     printerIp: "",
     printerPort: 9100,
     usbPrinterName: "",
-    pollMs: 4000,
+    pollMs: 2000,
     autoLaunch: true,
     printedIds: [], // durable dedup across restarts
     // ── Bill (tax invoice) printer — separate device from the KOT printer ──
@@ -424,7 +424,7 @@ function startLoop() {
   if (pollTimer) clearInterval(pollTimer);
   // Restore bill dedup set across restarts.
   for (const id of cfg().billPrintedIds || []) billPrintedSession.add(id);
-  const ms = Math.max(2000, Number(cfg().pollMs) || 4000);
+  const ms = Math.max(1500, Number(cfg().pollMs) || 2000);
   pollTimer = setInterval(() => {
     poll();
     pollBills();
