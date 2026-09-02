@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { Clock, ChevronDown, ChevronUp, Printer } from "lucide-react";
+import { useReactToPrint } from "react-to-print";
+import { KotTicketContent } from "@/components/admin/KotPrintButton";
+import { printKotViaRawBT } from "@/lib/print/rawbt";
 import { elapsedMinutes, formatElapsed } from "@/lib/utils";
 import KOTItem from "./KOTItem";
 import type { IOrder, IOrderItem, ItemStatus } from "@/types";
@@ -50,6 +53,22 @@ export default function KOTCard({
   const [elapsed, setElapsed] = useState(() => formatElapsed(order.createdAt));
   const [collapsed, setCollapsed] = useState(false);
   const [confirmReady, setConfirmReady] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  const handleBrowserPrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `KOT-${order.kotNumber}`,
+    pageStyle: `@page { size: 80mm auto; margin: 0; } @media print { body { margin: 0; } }`,
+  });
+
+  const handlePrintKOT = () => {
+    // 1. Try RawBT (if running on Android with OTG printer)
+    const printedRawBT = printKotViaRawBT(order, "ASHOKA HOTEL");
+    if (!printedRawBT) {
+      // 2. Fallback to standard browser print
+      handleBrowserPrint();
+    }
+  };
 
   // Live elapsed counter
   useEffect(() => {
@@ -184,8 +203,17 @@ export default function KOTCard({
       )}
 
       {/* Actions */}
-      {!collapsed && (canMarkAllReady || canMarkAllDelivered) && (
-        <div className="px-4 py-3 flex gap-2 border-t border-base-300/50 bg-base-200/30">
+      {!collapsed && (
+        <div className="px-4 py-3 flex items-center gap-2 border-t border-base-300/50 bg-base-200/30">
+          <button
+            onClick={handlePrintKOT}
+            className="btn btn-sm btn-outline border-base-content/20 hover:bg-amber-500 hover:border-amber-500 hover:text-white gap-1.5 shrink-0"
+            title="Print KOT via OTG Thermal Printer"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print KOT</span>
+          </button>
+
           {canMarkAllReady &&
             (confirmReady ? (
               <div className="flex gap-2 flex-1">
@@ -223,6 +251,11 @@ export default function KOTCard({
           )}
         </div>
       )}
+
+      {/* Hidden printable ticket content for browser print fallback */}
+      <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
+        <KotTicketContent ref={printRef} order={order} hotelName="ASHOKA HOTEL" />
+      </div>
     </motion.div>
   );
 }

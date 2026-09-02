@@ -68,7 +68,7 @@ export default function CoverPage({ branding, width, height }: Props) {
       <div className="relative z-10 text-center px-8 flex flex-col items-center gap-3.5">
         <div className="p-1 rounded-full bg-white border-2 border-amber-400 shadow-xl">
           <Image
-            src={branding?.logoUrl || "/tajlogo.png"}
+            src={branding?.logoUrl || "/ashokalogo.png"}
             alt={branding?.restaurantName ?? "Ashoka Hotel Logo"}
             width={85}
             height={85}

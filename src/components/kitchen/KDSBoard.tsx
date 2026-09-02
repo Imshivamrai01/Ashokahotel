@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
-import { LayoutGrid, RefreshCw } from "lucide-react";
+import { LayoutGrid, RefreshCw, Volume2, VolumeX, Printer } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useKDSPolling } from "@/hooks/useKDSPolling";
+import { playKitchenChime, unlockAudio } from "@/hooks/useBuzzer";
 import KOTCard from "./KOTCard";
 import KDSFilters from "./KDSFilters";
 import BuzzerHandler from "./BuzzerHandler";
@@ -198,6 +199,18 @@ export default function KDSBoard() {
               <kbd className="kbd kbd-xs">R</kbd> ready &nbsp;·&nbsp;
               <kbd className="kbd kbd-xs">D</kbd> done
             </span>
+            <button
+              onClick={() => {
+                unlockAudio();
+                playKitchenChime();
+                toast.info("Kitchen sound chime tested! Audio enabled.");
+              }}
+              className="btn btn-sm btn-ghost gap-1.5 text-xs text-amber-500 hover:bg-amber-500/10"
+              title="Click to test buzzer and enable sound on tablet"
+            >
+              <Volume2 className="w-4 h-4 text-amber-500 animate-pulse" />
+              <span className="hidden sm:inline">Sound ON</span>
+            </button>
             <button
               onClick={() => refetch()}
               className="btn btn-ghost btn-sm btn-circle"

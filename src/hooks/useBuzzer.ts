@@ -2,66 +2,111 @@
 
 import { useEffect, useRef } from "react";
 
-/**
- * useBuzzer — plays an audio alert when newKotIds grows.
- * Uses Web Audio API as a fallback if the mp3 file is not found.
- */
-export function useBuzzer(newKotCount: number) {
-  const prevCount = useRef(0);
+// Global audio context & unlock state so any user click unlocks audio permanently
+let globalAudioCtx: AudioContext | null = null;
+let isAudioUnlocked = false;
 
-  useEffect(() => {
-    if (newKotCount > prevCount.current) {
-      // Prefer the bundled MP3 in /public. If the browser blocks autoplay,
-      // fall back to a short WebAudio beep.
-      const audio = new Audio("/buzzer.mp3");
-      audio.volume = 0.75;
+export function unlockAudio() {
+  if (typeof window === "undefined") return;
+  try {
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!globalAudioCtx && AudioCtx) {
+      globalAudioCtx = new AudioCtx();
+    }
+    if (globalAudioCtx && globalAudioCtx.state === "suspended") {
+      globalAudioCtx.resume();
+    }
+    isAudioUnlocked = true;
+  } catch {}
+}
 
-      const tryPlayAudio = async () => {
-        try {
-          // Some browsers require user gesture; try play and if it rejects,
-          // fall back to WebAudio beep.
-          await audio.play();
-          // If play succeeds, schedule a short cleanup
+export function playKitchenChime() {
+  if (typeof window === "undefined") return;
+
+  // 1. Try playing the loud buzzer MP3
+  try {
+    const audio = new Audio("/buzzer.mp3");
+    audio.volume = 1.0;
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
           setTimeout(() => {
             try {
               audio.pause();
               audio.currentTime = 0;
             } catch {}
-          }, 1500);
-          return true;
-        } catch {
-          return false;
-        }
-      };
+          }, 3000);
+        })
+        .catch(() => {
+          // Fallback to Web Audio synthesiser
+          playSynthesizedBeep();
+        });
+      return;
+    }
+  } catch {
+    playSynthesizedBeep();
+  }
+}
 
-      tryPlayAudio().then((ok) => {
-        if (ok) return;
-        // Web Audio fallback
-        try {
-          const AudioCtx =
-            (window as any).AudioContext || (window as any).webkitAudioContext;
-          if (!AudioCtx) return;
-          const ctx: AudioContext = new AudioCtx();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.type = "triangle";
-          osc.frequency.setValueAtTime(880, ctx.currentTime);
-          gain.gain.setValueAtTime(0.45, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-          osc.start(ctx.currentTime);
-          osc.stop(ctx.currentTime + 0.5);
-          // Close context after sound
-          setTimeout(() => {
-            try {
-              ctx.close();
-            } catch {}
-          }, 700);
-        } catch {
-          // silent failure
-        }
-      });
+function playSynthesizedBeep() {
+  try {
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx: AudioContext = globalAudioCtx || new AudioCtx();
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+
+    // Play 3 loud distinct kitchen beeps (high attention)
+    const playTone = (freq: number, startTime: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square"; // louder & sharper than triangle
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0.6, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+
+    const now = ctx.currentTime;
+    playTone(980, now, 0.25);
+    playTone(980, now + 0.3, 0.25);
+    playTone(1250, now + 0.6, 0.4);
+  } catch (e) {
+    console.warn("WebAudio beep failed", e);
+  }
+}
+
+/**
+ * useBuzzer — plays a loud alert chime when newKotCount increases.
+ */
+export function useBuzzer(newKotCount: number) {
+  const prevCount = useRef(0);
+
+  // Listen to any first touch/click anywhere on tablet to unlock audio context immediately
+  useEffect(() => {
+    const handleFirstTouch = () => {
+      unlockAudio();
+      window.removeEventListener("click", handleFirstTouch);
+      window.removeEventListener("touchstart", handleFirstTouch);
+    };
+    window.addEventListener("click", handleFirstTouch);
+    window.addEventListener("touchstart", handleFirstTouch);
+    return () => {
+      window.removeEventListener("click", handleFirstTouch);
+      window.removeEventListener("touchstart", handleFirstTouch);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (newKotCount > prevCount.current) {
+      playKitchenChime();
     }
     prevCount.current = newKotCount;
   }, [newKotCount]);

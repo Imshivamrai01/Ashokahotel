@@ -15,7 +15,7 @@ export default function FoodPlaceholder({
   logoUrl?: string | null;
   className?: string;
 }) {
-  const src = logoUrl || "/tajlogo.png";
+  const src = logoUrl || "/ashokalogo.png";
   return (
     <div className={`absolute inset-0 p-[18%] ${className}`} aria-hidden="true">
       <div className="relative w-full h-full opacity-25">

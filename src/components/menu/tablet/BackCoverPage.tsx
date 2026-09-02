@@ -83,7 +83,7 @@ export default function BackCoverPage({
 
         <div className="p-1.5 rounded-full bg-white border-2 border-amber-400 shadow-md">
           <Image
-            src={branding?.logoUrl || "/tajlogo.png"}
+            src={branding?.logoUrl || "/ashokalogo.png"}
             alt="logo"
             width={70}
             height={70}
