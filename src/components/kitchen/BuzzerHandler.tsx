@@ -5,11 +5,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useBuzzer } from "@/hooks/useBuzzer";
 
 interface BuzzerHandlerProps {
-  newKotCount: number;
+  pendingKotCount: number;
+  newKotCount?: number;
+  enabled?: boolean;
 }
 
-export default function BuzzerHandler({ newKotCount }: BuzzerHandlerProps) {
-  useBuzzer(newKotCount);
+export default function BuzzerHandler({
+  pendingKotCount,
+  newKotCount = 0,
+  enabled = true,
+}: BuzzerHandlerProps) {
+  useBuzzer(pendingKotCount, enabled);
   const prevCount = useRef(newKotCount);
   const [isFlashing, setIsFlashing] = useState(false);
 
@@ -38,3 +44,4 @@ export default function BuzzerHandler({ newKotCount }: BuzzerHandlerProps) {
     </AnimatePresence>
   );
 }
+

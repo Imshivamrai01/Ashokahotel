@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 // Global audio context & unlock state so any user click unlocks audio permanently
 let globalAudioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
+let currentChimeAudio: HTMLAudioElement | null = null;
 
 export function unlockAudio() {
   if (typeof window === "undefined") return;
@@ -21,12 +22,24 @@ export function unlockAudio() {
   } catch {}
 }
 
+export function stopKitchenChime() {
+  if (currentChimeAudio) {
+    try {
+      currentChimeAudio.pause();
+      currentChimeAudio.currentTime = 0;
+    } catch {}
+    currentChimeAudio = null;
+  }
+}
+
 export function playKitchenChime() {
   if (typeof window === "undefined") return;
 
   // 1. Try playing the loud buzzer MP3
   try {
+    stopKitchenChime();
     const audio = new Audio("/buzzer.mp3");
+    currentChimeAudio = audio;
     audio.volume = 1.0;
     const playPromise = audio.play();
     if (playPromise !== undefined) {
@@ -34,10 +47,13 @@ export function playKitchenChime() {
         .then(() => {
           setTimeout(() => {
             try {
-              audio.pause();
-              audio.currentTime = 0;
+              if (currentChimeAudio === audio) {
+                audio.pause();
+                audio.currentTime = 0;
+                currentChimeAudio = null;
+              }
             } catch {}
-          }, 3000);
+          }, 2500);
         })
         .catch(() => {
           // Fallback to Web Audio synthesiser
@@ -57,7 +73,7 @@ function playSynthesizedBeep() {
     if (!AudioCtx) return;
     const ctx: AudioContext = globalAudioCtx || new AudioCtx();
     if (ctx.state === "suspended") {
-      ctx.resume();
+      ctx.resume().catch(() => {});
     }
 
     // Play 3 loud distinct kitchen beeps (high attention)
@@ -84,11 +100,10 @@ function playSynthesizedBeep() {
 }
 
 /**
- * useBuzzer — plays a loud alert chime when newKotCount increases.
+ * useBuzzer — continuously plays a loud alert chime as long as pendingKotCount > 0,
+ * and stops immediately once order preparation starts (pendingKotCount === 0).
  */
-export function useBuzzer(newKotCount: number) {
-  const prevCount = useRef(0);
-
+export function useBuzzer(pendingKotCount: number, enabled: boolean = true) {
   // Listen to any first touch/click anywhere on tablet to unlock audio context immediately
   useEffect(() => {
     const handleFirstTouch = () => {
@@ -105,9 +120,23 @@ export function useBuzzer(newKotCount: number) {
   }, []);
 
   useEffect(() => {
-    if (newKotCount > prevCount.current) {
-      playKitchenChime();
+    if (!enabled || pendingKotCount <= 0) {
+      stopKitchenChime();
+      return;
     }
-    prevCount.current = newKotCount;
-  }, [newKotCount]);
+
+    // Immediately chime once on incoming pending order
+    playKitchenChime();
+
+    // Repeat chime every 3.5 seconds until all pending orders start preparing
+    const interval = setInterval(() => {
+      playKitchenChime();
+    }, 3500);
+
+    return () => {
+      clearInterval(interval);
+      stopKitchenChime();
+    };
+  }, [pendingKotCount, enabled]);
 }
+

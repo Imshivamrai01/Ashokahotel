@@ -61,11 +61,25 @@ export default function KDSBoard() {
     [refetch],
   );
 
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Pending orders that haven't started preparing yet
+  const pendingOrdersCount = useMemo(() => {
+    return orders.filter(
+      (o) =>
+        o.status === "pending" ||
+        (o.items &&
+          o.items.some(
+            (i) => i.itemStatus === "pending" && i.itemStatus !== "cancelled",
+          )),
+    ).length;
+  }, [orders]);
+
   // One atomic order-level PATCH instead of N parallel item PATCHes — the
   // server updates every item + recomputes status in a single transaction, so
   // concurrent saves can't drop changes or miscompute the total.
   const patchOrderStatus = useCallback(
-    async (orderId: string, status: "ready" | "delivered") => {
+    async (orderId: string, status: "preparing" | "ready" | "delivered") => {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -74,6 +88,20 @@ export default function KDSBoard() {
       if (!res.ok) throw new Error();
     },
     [],
+  );
+
+  const handleStartPreparing = useCallback(
+    async (orderId: string) => {
+      try {
+        await patchOrderStatus(orderId, "preparing");
+        if (newKotIds.has(orderId)) clearNewKot(orderId);
+        refetch();
+        toast.success("Preparation started! 🍳");
+      } catch {
+        toast.error("Could not update to preparing");
+      }
+    },
+    [patchOrderStatus, newKotIds, clearNewKot, refetch],
   );
 
   const handleMarkAllReady = useCallback(
@@ -180,7 +208,11 @@ export default function KDSBoard() {
 
   return (
     <div className="flex flex-col h-full">
-      <BuzzerHandler newKotCount={newKotIds.size} />
+      <BuzzerHandler
+        pendingKotCount={pendingOrdersCount}
+        newKotCount={newKotIds.size}
+        enabled={soundEnabled}
+      />
 
       {/* Toolbar */}
       <div className="px-4 py-2 border-b border-base-300 bg-base-200/50 shrink-0">
@@ -190,6 +222,11 @@ export default function KDSBoard() {
             <h1 className="font-bold text-lg leading-none">Kitchen Display</h1>
             {isLoading && (
               <span className="loading loading-spinner loading-xs text-base-content/40" />
+            )}
+            {pendingOrdersCount > 0 && (
+              <span className="badge badge-warning font-bold gap-1 animate-pulse text-xs">
+                🔔 {pendingOrdersCount} Pending
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -202,14 +239,31 @@ export default function KDSBoard() {
             <button
               onClick={() => {
                 unlockAudio();
-                playKitchenChime();
-                toast.info("Kitchen sound chime tested! Audio enabled.");
+                const next = !soundEnabled;
+                setSoundEnabled(next);
+                if (next) {
+                  playKitchenChime();
+                  toast.info("Kitchen sound chime ON!");
+                } else {
+                  toast.info("Kitchen sound chime Muted.");
+                }
               }}
-              className="btn btn-sm btn-ghost gap-1.5 text-xs text-amber-500 hover:bg-amber-500/10"
-              title="Click to test buzzer and enable sound on tablet"
+              className={`btn btn-sm btn-ghost gap-1.5 text-xs ${
+                soundEnabled ? "text-amber-500 hover:bg-amber-500/10" : "text-base-content/40"
+              }`}
+              title={soundEnabled ? "Sound Alert is ON. Click to Mute." : "Sound Alert is MUTED. Click to enable."}
             >
-              <Volume2 className="w-4 h-4 text-amber-500 animate-pulse" />
-              <span className="hidden sm:inline">Sound ON</span>
+              {soundEnabled ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-amber-500 animate-pulse" />
+                  <span className="hidden sm:inline font-bold">Sound ON</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-4 h-4 text-base-content/40" />
+                  <span className="hidden sm:inline">Muted</span>
+                </>
+              )}
             </button>
             <button
               onClick={() => refetch()}
@@ -239,31 +293,26 @@ export default function KDSBoard() {
               <span className="shrink-0 text-error text-[10px] font-bold uppercase tracking-widest">
                 NEW KOT
               </span>
-              <div className="flex-1 overflow-hidden">
-                <motion.p
-                  key={tickerItems.join(",")}
-                  initial={{ x: "100%" }}
-                  animate={{ x: "-100%" }}
-                  transition={{ duration: 14, ease: "linear" }}
-                  className="whitespace-nowrap text-xs font-medium text-error"
-                >
-                  {tickerItems.join("   ·   ")}&nbsp;&nbsp;&nbsp;&nbsp;
-                  {tickerItems.join("   ·   ")}
-                </motion.p>
+              <div className="flex gap-4 animate-marquee whitespace-nowrap text-xs font-semibold">
+                {tickerItems.map((m, i) => (
+                  <span key={i} className="text-base-content/80">
+                    {m}
+                  </span>
+                ))}
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Grid */}
+      {/* Card Grid */}
       <div className="flex-1 overflow-y-auto p-4">
         {isError && (
           <div className="alert alert-error mb-4">
             <span>Failed to load orders. Retrying…</span>
           </div>
         )}
-        {!isLoading && sorted.length === 0 && (
+        {sorted.length === 0 && !isLoading && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -296,6 +345,10 @@ export default function KDSBoard() {
                     onItemStatusChange={(oid, iid, st) => {
                       if (isNew) clearNewKot(oid);
                       return handleItemStatus(oid, iid, st);
+                    }}
+                    onStartPreparing={(oid) => {
+                      if (isNew) clearNewKot(oid);
+                      return handleStartPreparing(oid);
                     }}
                     onMarkAllReady={(oid) => {
                       if (isNew) clearNewKot(oid);

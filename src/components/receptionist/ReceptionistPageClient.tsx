@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { signOut } from "next-auth/react";
@@ -24,6 +24,8 @@ import {
   Trash2,
   UtensilsCrossed,
   Check,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { formatElapsed, formatPrice } from "@/lib/utils";
@@ -147,7 +149,43 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
     return staffList.filter((s) => s.role === "captain" || s.role === "admin");
   }, [staffList]);
 
+  const [confirmedOrderIds, setConfirmedOrderIds] = useState<Set<string>>(new Set());
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const stopReceptionAudio = useCallback(() => {
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+      } catch {}
+      activeAudioRef.current = null;
+    }
+  }, []);
+
+  const playReceptionChime = useCallback(() => {
+    if (!soundEnabled || typeof window === "undefined") return;
+    try {
+      stopReceptionAudio();
+      const audio = new Audio("/alert.webm");
+      activeAudioRef.current = audio;
+      audio.volume = 0.9;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          try {
+            const fallback = new Audio("/staffcallbeep.mp3");
+            activeAudioRef.current = fallback;
+            fallback.volume = 0.8;
+            fallback.play().catch(() => {});
+          } catch {}
+        });
+      }
+    } catch {}
+  }, [soundEnabled, stopReceptionAudio]);
+
   const openConfirmModal = (order: IOrder) => {
+    stopReceptionAudio();
     setConfirmingOrder(order);
     const existingCapt = availableCaptains.find((c) => c._id === order.captainId);
     if (existingCapt) {
@@ -165,32 +203,46 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
     }
   };
 
-  // Sound chime when new unconfirmed order arrives using /alert.webm
-  const prevUnconfirmedCount = useRef(0);
   const unconfirmedOrders = useMemo(
-    () => allOrders.filter((o) => o.status === "pending_captain" || !o.isCaptainConfirmed),
-    [allOrders],
+    () =>
+      allOrders.filter(
+        (o) =>
+          !confirmedOrderIds.has(o._id) &&
+          (o.status === "pending_captain" || !o.isCaptainConfirmed),
+      ),
+    [allOrders, confirmedOrderIds],
   );
 
+  const prevUnconfirmedCount = useRef(0);
+
+  // Sound chime when new unconfirmed order or room call is waiting
   useEffect(() => {
+    if (!soundEnabled || (unconfirmedOrders.length === 0 && roomCalls.length === 0)) {
+      stopReceptionAudio();
+      prevUnconfirmedCount.current = unconfirmedOrders.length;
+      return;
+    }
+
     if (unconfirmedOrders.length > prevUnconfirmedCount.current) {
       toast.info(`🔔 New Room Order received! (${unconfirmedOrders.length} waiting confirmation)`, {
         duration: 6000,
       });
-      try {
-        const audio = new Audio("/alert.webm");
-        audio.volume = 0.9;
-        audio.play().catch(() => {
-          try {
-            const fallback = new Audio("/staffcallbeep.mp3");
-            fallback.volume = 0.8;
-            fallback.play().catch(() => {});
-          } catch {}
-        });
-      } catch {}
     }
     prevUnconfirmedCount.current = unconfirmedOrders.length;
-  }, [unconfirmedOrders.length]);
+
+    // Play chime immediately
+    playReceptionChime();
+
+    // Repeat chime periodically until order is accepted/confirmed or call dismissed
+    const interval = setInterval(() => {
+      playReceptionChime();
+    }, 4500);
+
+    return () => {
+      clearInterval(interval);
+      stopReceptionAudio();
+    };
+  }, [unconfirmedOrders.length, roomCalls.length, soundEnabled, playReceptionChime, stopReceptionAudio]);
 
   // Mutations
   const confirmMutation = useMutation({
@@ -203,6 +255,10 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
       captainId?: string;
       captainName?: string;
     }) => {
+      // Immediately stop audio alert and mark locally as confirmed
+      stopReceptionAudio();
+      setConfirmedOrderIds((prev) => new Set([...prev, orderId]));
+
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -217,6 +273,7 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
       return data;
     },
     onSuccess: (data) => {
+      stopReceptionAudio();
       const ord = data.order || {};
       toast.success(`Order confirmed for ${ord.tableLabel || "room"}! KOT sent to Kitchen Print Queue.`);
       setConfirmingOrder(null);
@@ -439,8 +496,28 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
           </button>
         </div>
 
-        {/* Right Exit / Sign out */}
+        {/* Right Exit / Sign out & Sound Toggle */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (soundEnabled) stopReceptionAudio();
+              setSoundEnabled(!soundEnabled);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+              soundEnabled
+                ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
+                : "bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200"
+            }`}
+            title={soundEnabled ? "Mute Alert Sounds" : "Unmute Alert Sounds"}
+          >
+            {soundEnabled ? (
+              <Volume2 className="w-3.5 h-3.5 text-amber-600" />
+            ) : (
+              <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+            )}
+            <span>{soundEnabled ? "Sound ON" : "Muted"}</span>
+          </button>
+
           {role === "admin" && (
             <a
               href="/admin/dashboard"

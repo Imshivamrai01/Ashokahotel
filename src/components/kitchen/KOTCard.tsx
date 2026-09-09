@@ -19,6 +19,7 @@ interface KOTCardProps {
     itemId: string,
     status: ItemStatus,
   ) => Promise<void>;
+  onStartPreparing?: (orderId: string) => Promise<void>;
   onMarkAllReady: (orderId: string) => Promise<void>;
   onMarkAllDelivered: (orderId: string) => Promise<void>;
 }
@@ -47,6 +48,7 @@ export default function KOTCard({
   order,
   isNew,
   onItemStatusChange,
+  onStartPreparing,
   onMarkAllReady,
   onMarkAllDelivered,
 }: KOTCardProps) {
@@ -204,7 +206,7 @@ export default function KOTCard({
 
       {/* Actions */}
       {!collapsed && (
-        <div className="px-4 py-3 flex items-center gap-2 border-t border-base-300/50 bg-base-200/30">
+        <div className="px-4 py-3 flex items-center gap-2 border-t border-base-300/50 bg-base-200/30 flex-wrap">
           <button
             onClick={handlePrintKOT}
             className="btn btn-sm btn-outline border-base-content/20 hover:bg-amber-500 hover:border-amber-500 hover:text-white gap-1.5 shrink-0"
@@ -213,6 +215,16 @@ export default function KOTCard({
             <Printer className="w-3.5 h-3.5" />
             <span>Print KOT</span>
           </button>
+
+          {order.items.some((i) => i.itemStatus === "pending") && onStartPreparing && (
+            <button
+              onClick={() => onStartPreparing(order._id)}
+              className="btn btn-sm bg-amber-500 hover:bg-amber-600 text-white font-bold flex-1 gap-1.5 shadow-sm border-none"
+              title="Start cooking all pending items (Silences pending buzzer)"
+            >
+              🍳 Start Preparing
+            </button>
+          )}
 
           {canMarkAllReady &&
             (confirmReady ? (

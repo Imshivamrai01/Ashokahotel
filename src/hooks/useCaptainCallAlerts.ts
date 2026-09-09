@@ -55,15 +55,26 @@ export function useCaptainCallAlerts() {
     } catch {}
   }, []);
 
+  const stopBeep = useCallback(() => {
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      } catch {}
+    }
+  }, []);
+
   const dismiss = useCallback(async (id: string) => {
+    stopBeep();
     setAlerts((prev) => prev.filter((a) => a._id !== id));
     prevIds.current.delete(id);
     try {
       await fetch(`/api/captain-call/${id}`, { method: "PATCH" });
     } catch {}
-  }, []);
+  }, [stopBeep]);
 
   const dismissAll = useCallback(async () => {
+    stopBeep();
     const ids = alerts.map((a) => a._id);
     setAlerts([]);
     ids.forEach((id) => prevIds.current.delete(id));
@@ -72,7 +83,7 @@ export function useCaptainCallAlerts() {
         fetch(`/api/captain-call/${id}`, { method: "PATCH" }).catch(() => {}),
       ),
     );
-  }, [alerts]);
+  }, [alerts, stopBeep]);
 
   useEffect(() => {
     const poll = async () => {
