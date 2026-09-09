@@ -77,16 +77,19 @@ export const TableReceiptContent = forwardRef<HTMLDivElement, TableReceiptConten
     <div
       ref={ref}
       style={{
-        fontFamily: "'Courier New', Courier, monospace",
-        fontSize: "12px",
-        lineHeight: 1.4,
-        padding: "8mm",
+        fontFamily:
+          "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, monospace, sans-serif",
+        fontSize: "12.5px",
+        fontWeight: 700,
+        lineHeight: 1.35,
+        padding: "6mm 8mm",
         maxWidth: "80mm",
-        color: "#000",
-        background: "#fff",
+        color: "#000000",
+        background: "#ffffff",
+        WebkitFontSmoothing: "antialiased",
       }}
     >
-      <div style={{ textAlign: "center", marginBottom: 6 }}>
+      <div style={{ textAlign: "center", marginBottom: 8 }}>
         {logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -94,43 +97,78 @@ export const TableReceiptContent = forwardRef<HTMLDivElement, TableReceiptConten
             alt={hotelName}
             style={{
               display: "block",
-              maxWidth: "40mm",
-              maxHeight: "18mm",
+              maxWidth: "42mm",
+              maxHeight: "20mm",
               margin: "0 auto 4px",
               objectFit: "contain",
-              filter: "grayscale(1) contrast(1.1)",
+              filter: "contrast(250%) grayscale(100%)",
             }}
           />
         )}
-        <div style={{ fontSize: 16, fontWeight: "bold", letterSpacing: 1 }}>
+        <div
+          style={{
+            fontSize: 17,
+            fontWeight: 900,
+            letterSpacing: 1,
+            color: "#000000",
+          }}
+        >
           {hotelName.toUpperCase()}
         </div>
-        <div style={{ fontSize: 12, fontWeight: "bold", marginTop: 2 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 900,
+            marginTop: 2,
+            color: "#000000",
+          }}
+        >
           {isSettled ? "TAX INVOICE" : "TABLE BILL / ESTIMATE"}
         </div>
-        <div style={{ fontSize: 10, fontWeight: "bold", color: isSettled ? "#000" : "#555" }}>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 800,
+            marginTop: 1,
+            color: "#000000",
+          }}
+        >
           {isSettled ? "[ STATUS: PAID ✅ ]" : "[ STATUS: PENDING ]"}
         </div>
-        {gstNumber && <div style={{ fontSize: 10 }}>GSTIN: {gstNumber}</div>}
-        <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
+        {gstNumber && (
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#000000" }}>
+            GSTIN: {gstNumber}
+          </div>
+        )}
+        <div style={{ borderTop: "1.5px dashed #000000", margin: "6px 0" }} />
       </div>
 
-      <table style={{ width: "100%", fontSize: 11 }}>
+      <table
+        style={{
+          width: "100%",
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#000000",
+          borderCollapse: "collapse",
+        }}
+      >
         <tbody>
           <tr>
-            <td>Table:</td>
-            <td style={{ textAlign: "right" }}>{tableLabel}</td>
+            <td style={{ fontWeight: 800, padding: "1px 0" }}>Table:</td>
+            <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
+              {tableLabel}
+            </td>
           </tr>
           <tr>
-            <td>Date:</td>
-            <td style={{ textAlign: "right" }}>
+            <td style={{ padding: "1px 0" }}>Date:</td>
+            <td style={{ textAlign: "right", padding: "1px 0" }}>
               {format(new Date(), "dd MMM yyyy  HH:mm")}
             </td>
           </tr>
           {safeKots.some((k) => k.kotNumber) && (
             <tr>
-              <td>KOTs:</td>
-              <td style={{ textAlign: "right" }}>
+              <td style={{ padding: "1px 0" }}>KOTs:</td>
+              <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
                 {safeKots
                   .map((k) => k.kotNumber)
                   .filter(Boolean)
@@ -140,46 +178,88 @@ export const TableReceiptContent = forwardRef<HTMLDivElement, TableReceiptConten
           )}
           {custName && (
             <tr>
-              <td>Customer:</td>
-              <td style={{ textAlign: "right" }}>{custName}</td>
+              <td style={{ padding: "1px 0" }}>Customer:</td>
+              <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
+                {custName}
+              </td>
             </tr>
           )}
           {custPhone && (
             <tr>
-              <td>Phone:</td>
-              <td style={{ textAlign: "right" }}>{custPhone}</td>
+              <td style={{ padding: "1px 0" }}>Phone:</td>
+              <td style={{ textAlign: "right", fontWeight: 700, padding: "1px 0" }}>
+                {custPhone}
+              </td>
             </tr>
           )}
         </tbody>
       </table>
 
-      <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
+      <div style={{ borderTop: "1.5px dashed #000000", margin: "6px 0" }} />
 
-      <table style={{ width: "100%", fontSize: 11 }}>
+      <table
+        style={{
+          width: "100%",
+          fontSize: 12,
+          color: "#000000",
+          borderCollapse: "collapse",
+        }}
+      >
         <thead>
-          <tr>
-            <td style={{ fontWeight: "bold" }}>QTY</td>
-            <td style={{ fontWeight: "bold" }}>ITEM</td>
-            <td style={{ fontWeight: "bold", textAlign: "right" }}>AMT</td>
+          <tr style={{ fontWeight: 900 }}>
+            <td style={{ fontWeight: 900, width: "16%", paddingBottom: 2 }}>QTY</td>
+            <td style={{ fontWeight: 900, paddingBottom: 2 }}>ITEM</td>
+            <td style={{ fontWeight: 900, textAlign: "right", width: "24%", paddingBottom: 2 }}>
+              AMT
+            </td>
           </tr>
           <tr>
             <td colSpan={3}>
-              <div style={{ borderTop: "1px solid #000" }} />
+              <div style={{ borderTop: "2px solid #000000", margin: "2px 0 4px" }} />
             </td>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item._id}>
-              <td style={{ verticalAlign: "top", paddingRight: 4 }}>
+            <tr key={item._id} style={{ fontWeight: 700 }}>
+              <td
+                style={{
+                  verticalAlign: "top",
+                  paddingRight: 4,
+                  fontWeight: 900,
+                  fontSize: 13,
+                  paddingTop: 2,
+                  paddingBottom: 2,
+                }}
+              >
                 {item.quantity}
               </td>
-              <td style={{ verticalAlign: "top" }}>
+              <td
+                style={{
+                  verticalAlign: "top",
+                  fontWeight: 800,
+                  fontSize: 12.5,
+                  paddingTop: 2,
+                  paddingBottom: 2,
+                }}
+              >
                 {item.name}
-                {item.variationName && ` (${item.variationName})`}
+                {item.variationName && (
+                  <span style={{ fontWeight: 700 }}> ({item.variationName})</span>
+                )}
                 {item.isNC && " (NC)"}
               </td>
-              <td style={{ textAlign: "right", verticalAlign: "top" }}>
+              <td
+                style={{
+                  textAlign: "right",
+                  verticalAlign: "top",
+                  fontWeight: 900,
+                  fontSize: 13,
+                  paddingTop: 2,
+                  paddingBottom: 2,
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {item.isNC
                   ? "FREE"
                   : `₹${(item.price * item.quantity).toFixed(0)}`}
@@ -189,50 +269,103 @@ export const TableReceiptContent = forwardRef<HTMLDivElement, TableReceiptConten
         </tbody>
       </table>
 
-      <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
+      <div style={{ borderTop: "1.5px dashed #000000", margin: "6px 0" }} />
 
-      <table style={{ width: "100%", fontSize: 11 }}>
+      <table
+        style={{
+          width: "100%",
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#000000",
+          borderCollapse: "collapse",
+        }}
+      >
         <tbody>
           <tr>
-            <td>Subtotal</td>
-            <td style={{ textAlign: "right" }}>₹{subtotal.toFixed(2)}</td>
+            <td style={{ padding: "1px 0" }}>Subtotal</td>
+            <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
+              ₹{subtotal.toFixed(2)}
+            </td>
           </tr>
           {discount > 0 && (
             <tr>
-              <td>Discount</td>
-              <td style={{ textAlign: "right" }}>− ₹{discount.toFixed(2)}</td>
+              <td style={{ padding: "1px 0" }}>Discount</td>
+              <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
+                − ₹{discount.toFixed(2)}
+              </td>
             </tr>
           )}
           {tax > 0 && (
             <>
               <tr>
-                <td>CGST</td>
-                <td style={{ textAlign: "right" }}>₹{(tax / 2).toFixed(2)}</td>
+                <td style={{ padding: "1px 0" }}>CGST</td>
+                <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
+                  ₹{(tax / 2).toFixed(2)}
+                </td>
               </tr>
               <tr>
-                <td>SGST</td>
-                <td style={{ textAlign: "right" }}>₹{(tax / 2).toFixed(2)}</td>
+                <td style={{ padding: "1px 0" }}>SGST</td>
+                <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
+                  ₹{(tax / 2).toFixed(2)}
+                </td>
               </tr>
             </>
           )}
           <tr>
-            <td style={{ fontWeight: "bold", fontSize: 13 }}>TOTAL</td>
-            <td style={{ textAlign: "right", fontWeight: "bold", fontSize: 13 }}>
+            <td
+              style={{
+                fontWeight: 900,
+                fontSize: 15,
+                paddingTop: 4,
+                paddingBottom: 4,
+                borderTop: "1.5px solid #000000",
+              }}
+            >
+              TOTAL
+            </td>
+            <td
+              style={{
+                textAlign: "right",
+                fontWeight: 900,
+                fontSize: 15,
+                paddingTop: 4,
+                paddingBottom: 4,
+                borderTop: "1.5px solid #000000",
+              }}
+            >
               ₹{total.toFixed(2)}
             </td>
           </tr>
           {isSettled && paymentMethod && (
             <tr>
-              <td style={{ fontSize: 11, fontWeight: "bold" }}>PAYMENT MODE</td>
-              <td style={{ textAlign: "right", fontSize: 11, fontWeight: "bold" }}>
+              <td style={{ fontSize: 11.5, fontWeight: 900, paddingTop: 2 }}>
+                PAYMENT MODE
+              </td>
+              <td
+                style={{
+                  textAlign: "right",
+                  fontSize: 11.5,
+                  fontWeight: 900,
+                  paddingTop: 2,
+                }}
+              >
                 {paymentMethod.replace("_", " ").toUpperCase()}
               </td>
             </tr>
           )}
           {!isSettled && (
             <tr>
-              <td style={{ fontSize: 10, color: "#666" }}>PAYMENT STATUS</td>
-              <td style={{ textAlign: "right", fontSize: 10, color: "#666", fontWeight: "bold" }}>
+              <td style={{ fontSize: 11, fontWeight: 800, paddingTop: 2 }}>
+                PAYMENT STATUS
+              </td>
+              <td
+                style={{
+                  textAlign: "right",
+                  fontSize: 11,
+                  fontWeight: 900,
+                  paddingTop: 2,
+                }}
+              >
                 PENDING
               </td>
             </tr>
@@ -240,8 +373,16 @@ export const TableReceiptContent = forwardRef<HTMLDivElement, TableReceiptConten
         </tbody>
       </table>
 
-      <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
-      <div style={{ textAlign: "center", fontSize: 10, marginTop: 4 }}>
+      <div style={{ borderTop: "1.5px dashed #000000", margin: "6px 0" }} />
+      <div
+        style={{
+          textAlign: "center",
+          fontSize: 11,
+          fontWeight: 800,
+          marginTop: 4,
+          color: "#000000",
+        }}
+      >
         Thank you for dining with us!
       </div>
     </div>
@@ -272,7 +413,7 @@ export function BillPrintButton({
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: `Bill-${data?.tableLabel ?? "Table"}`,
-    pageStyle: `@page { size: 80mm auto; margin: 0; } @media print { body { margin: 0; } }`,
+    pageStyle: `@page { size: 80mm auto; margin: 0; } @media print { body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; } * { color: #000000 !important; } }`,
   });
 
   return (

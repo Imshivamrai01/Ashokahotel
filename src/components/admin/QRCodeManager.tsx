@@ -275,6 +275,7 @@ const FontLoader = () => (
 interface CardProps {
   selected: QRLocation;
   qrDataUrl: string;
+  qrSize?: number;
   logoUrl?: string | null;
   logoSize?: number;
   logoY?: number;
@@ -289,6 +290,7 @@ interface CardProps {
 function PrintCardIvory({
   selected,
   qrDataUrl,
+  qrSize = 192,
   logoUrl,
   logoSize = 120,
   logoY = 30,
@@ -516,8 +518,8 @@ function PrintCardIvory({
           <img
             src={qrDataUrl}
             alt="QR Code"
-            width={192 * s}
-            height={192 * s}
+            width={(qrSize || 192) * s}
+            height={(qrSize || 192) * s}
             style={{ display: "block", borderRadius: 4 * s }}
           />
         </div>
@@ -579,6 +581,7 @@ function PrintCardIvory({
 function PrintCardMidnight({
   selected,
   qrDataUrl,
+  qrSize = 192,
   logoUrl,
   logoSize = 120,
   logoY = 30,
@@ -813,8 +816,8 @@ function PrintCardMidnight({
           <img
             src={qrDataUrl}
             alt="QR Code"
-            width={190 * s}
-            height={190 * s}
+            width={(qrSize || 190) * s}
+            height={(qrSize || 190) * s}
             style={{ display: "block", borderRadius: 4 * s }}
           />
         </div>
@@ -876,6 +879,7 @@ function PrintCardMidnight({
 function PrintCardBlush({
   selected,
   qrDataUrl,
+  qrSize = 192,
   logoUrl,
   logoSize = 120,
   logoY = 30,
@@ -1131,8 +1135,8 @@ function PrintCardBlush({
           <img
             src={qrDataUrl}
             alt="QR Code"
-            width={192 * s}
-            height={192 * s}
+            width={(qrSize || 192) * s}
+            height={(qrSize || 192) * s}
             style={{ display: "block", borderRadius: 4 * s }}
           />
         </div>
@@ -1184,6 +1188,7 @@ function PrintCardBlush({
 function PrintCardChampagne({
   selected,
   qrDataUrl,
+  qrSize = 192,
   logoUrl,
   logoSize = 120,
   logoY = 30,
@@ -1400,8 +1405,8 @@ function PrintCardChampagne({
           <img
             src={qrDataUrl}
             alt="QR Code"
-            width={192 * s}
-            height={192 * s}
+            width={(qrSize || 192) * s}
+            height={(qrSize || 192) * s}
             style={{ display: "block" }}
           />
         </div>
@@ -1463,6 +1468,7 @@ function PrintCardChampagne({
 function PrintCardNoir({
   selected,
   qrDataUrl,
+  qrSize = 192,
   logoUrl,
   logoSize = 120,
   logoY = 30,
@@ -1704,8 +1710,8 @@ function PrintCardNoir({
           <img
             src={qrDataUrl}
             alt="QR Code"
-            width={192 * s}
-            height={192 * s}
+            width={(qrSize || 192) * s}
+            height={(qrSize || 192) * s}
             style={{ display: "block", borderRadius: 4 * s }}
           />
         </div>
@@ -1877,7 +1883,24 @@ export function QRCodeManager({
     }
     return "ivory";
   });
+  const [qrSize, setQrSize] = useState<number>(() => {
+    try {
+      const s = localStorage.getItem("regaliaQR_qr_size");
+      if (s) {
+        const val = Number(s);
+        if (!isNaN(val) && val >= 100 && val <= 500) return val;
+      }
+    } catch {
+      /* ignore */
+    }
+    return 192;
+  });
   const printCardRef = useRef<HTMLDivElement>(null);
+
+  // Persist QR size adjustment
+  useEffect(() => {
+    localStorage.setItem("regaliaQR_qr_size", String(qrSize));
+  }, [qrSize]);
 
   // Persist logo adjustments
   useEffect(() => {
@@ -1911,13 +1934,13 @@ export function QRCodeManager({
   });
 
   const generateQR = useCallback(
-    async (loc: QRLocation) => {
+    async (loc: QRLocation, size = qrSize) => {
       setGenerating(true);
       try {
         const QRCode = (await import("qrcode")).default;
         const url = buildMenuUrl(effectiveBaseUrl, loc.type, loc.code);
         const dataUrl = await QRCode.toDataURL(url, {
-          width: 400,
+          width: Math.max(size * 2, 512),
           margin: 2,
           color: { dark: "#000000", light: "#ffffff" },
           errorCorrectionLevel: "H",
@@ -1927,14 +1950,14 @@ export function QRCodeManager({
         setGenerating(false);
       }
     },
-    [effectiveBaseUrl],
+    [effectiveBaseUrl, qrSize],
   );
 
   useEffect(() => {
     if (selected) {
-      generateQR(selected);
+      generateQR(selected, qrSize);
     }
-  }, [selected, effectiveBaseUrl, generateQR]);
+  }, [selected, effectiveBaseUrl, generateQR, qrSize]);
 
   const handleSelect = async (loc: QRLocation) => {
     setSelected(loc);
@@ -2015,6 +2038,7 @@ export function QRCodeManager({
   const sharedCardProps = {
     selected: selected!,
     qrDataUrl,
+    qrSize,
     logoUrl: branding?.logoUrl,
     logoSize,
     logoY,
@@ -2181,20 +2205,95 @@ export function QRCodeManager({
                   )}
                 </div>
 
-                {/* QR */}
-                <div className="bg-white p-4 rounded-2xl shadow-lg">
+                {/* QR Display Container */}
+                <div className="bg-white p-4 rounded-2xl shadow-lg flex flex-col items-center gap-2">
                   {generating ? (
-                    <div className="h-48 w-48 flex items-center justify-center">
+                    <div
+                      style={{
+                        width: Math.min(Math.max(qrSize, 140), 280),
+                        height: Math.min(Math.max(qrSize, 140), 280),
+                      }}
+                      className="flex items-center justify-center"
+                    >
                       <span className="loading loading-spinner loading-lg text-primary" />
                     </div>
                   ) : qrDataUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={qrDataUrl} alt="QR Code" className="h-48 w-48" />
+                    <img
+                      src={qrDataUrl}
+                      alt="QR Code"
+                      style={{
+                        width: Math.min(Math.max(qrSize, 140), 280),
+                        height: Math.min(Math.max(qrSize, 140), 280),
+                        objectFit: "contain",
+                      }}
+                    />
                   ) : (
-                    <div className="h-48 w-48 flex items-center justify-center">
+                    <div
+                      style={{
+                        width: Math.min(Math.max(qrSize, 140), 280),
+                        height: Math.min(Math.max(qrSize, 140), 280),
+                      }}
+                      className="flex items-center justify-center"
+                    >
                       <QrCode size={48} className="text-gray-300" />
                     </div>
                   )}
+                  <span className="text-[11px] font-mono text-gray-500 font-semibold">
+                    Current Size: {qrSize} × {qrSize} px
+                  </span>
+                </div>
+
+                {/* QR Size Adjustment Controls */}
+                <div className="w-full bg-base-200 border border-base-300 rounded-xl p-3.5 space-y-2 text-left">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-base-content/80 flex items-center gap-1.5">
+                      <QrCode size={14} className="text-primary" />
+                      QR Code Size (बड़ा / छोटा करें):
+                    </label>
+                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                      {qrSize}px
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-medium text-base-content/50 whitespace-nowrap">
+                      100px
+                    </span>
+                    <input
+                      type="range"
+                      min={100}
+                      max={400}
+                      step={4}
+                      value={qrSize}
+                      onChange={(e) => setQrSize(Number(e.target.value))}
+                      className="range range-xs range-primary flex-1"
+                    />
+                    <span className="text-[11px] font-medium text-base-content/50 whitespace-nowrap">
+                      400px
+                    </span>
+                  </div>
+
+                  {/* Preset Quick Buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] text-base-content/50 mr-1">
+                      Presets:
+                    </span>
+                    {[
+                      { label: "Small (140px)", size: 140 },
+                      { label: "Normal (192px)", size: 192 },
+                      { label: "Large (260px)", size: 260 },
+                      { label: "XL (340px)", size: 340 },
+                    ].map((p) => (
+                      <button
+                        key={p.size}
+                        onClick={() => setQrSize(p.size)}
+                        className={`btn btn-xs ${qrSize === p.size ? "btn-primary" : "btn-ghost border border-base-300"}`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Base URL / Domain Configuration */}
@@ -2258,47 +2357,69 @@ export function QRCodeManager({
                       Print Card Preview
                     </p>
 
-                    {/* Logo controls */}
-                    {branding?.logoUrl && (
-                      <div className="space-y-2 px-2">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-base-content/50 whitespace-nowrap w-16">
-                            Logo size
-                          </span>
-                          <input
-                            type="range"
-                            min={40}
-                            max={800}
-                            step={4}
-                            value={logoSize}
-                            onChange={(e) =>
-                              setLogoSize(Number(e.target.value))
-                            }
-                            className="range range-xs range-primary flex-1"
-                          />
-                          <span className="text-xs font-mono text-base-content/50 w-12 text-right">
-                            {logoSize}px
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-base-content/50 whitespace-nowrap w-16">
-                            Logo top
-                          </span>
-                          <input
-                            type="range"
-                            min={-300}
-                            max={200}
-                            step={2}
-                            value={logoY}
-                            onChange={(e) => setLogoY(Number(e.target.value))}
-                            className="range range-xs range-primary flex-1"
-                          />
-                          <span className="text-xs font-mono text-base-content/50 w-12 text-right">
-                            {logoY}px
-                          </span>
-                        </div>
+                    {/* QR Code & Logo controls */}
+                    <div className="space-y-2 px-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-base-content/50 whitespace-nowrap w-16">
+                          QR size
+                        </span>
+                        <input
+                          type="range"
+                          min={100}
+                          max={400}
+                          step={4}
+                          value={qrSize}
+                          onChange={(e) =>
+                            setQrSize(Number(e.target.value))
+                          }
+                          className="range range-xs range-primary flex-1"
+                        />
+                        <span className="text-xs font-mono text-base-content/50 w-12 text-right">
+                          {qrSize}px
+                        </span>
                       </div>
-                    )}
+
+                      {branding?.logoUrl && (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-base-content/50 whitespace-nowrap w-16">
+                              Logo size
+                            </span>
+                            <input
+                              type="range"
+                              min={40}
+                              max={800}
+                              step={4}
+                              value={logoSize}
+                              onChange={(e) =>
+                                setLogoSize(Number(e.target.value))
+                              }
+                              className="range range-xs range-primary flex-1"
+                            />
+                            <span className="text-xs font-mono text-base-content/50 w-12 text-right">
+                              {logoSize}px
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-base-content/50 whitespace-nowrap w-16">
+                              Logo top
+                            </span>
+                            <input
+                              type="range"
+                              min={-300}
+                              max={200}
+                              step={2}
+                              value={logoY}
+                              onChange={(e) => setLogoY(Number(e.target.value))}
+                              className="range range-xs range-primary flex-1"
+                            />
+                            <span className="text-xs font-mono text-base-content/50 w-12 text-right">
+                              {logoY}px
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
 
                     {/* Card size presets */}
                     <div className="px-2">

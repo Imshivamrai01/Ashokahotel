@@ -84,6 +84,7 @@ async function printKot(config, order) {
   p.drawLine();
 
   // KOT number — large
+  p.bold(true);
   p.setTextSize(1, 1);
   p.println(order.kotNumber || "");
   p.setTextNormal();
@@ -92,17 +93,22 @@ async function printKot(config, order) {
   p.println(`Table : ${order.tableLabel || "-"}`);
   p.println(`Time  : ${fmtTime(order.createdAt)}`);
   p.println(`Capt  : ${order.captainName || "-"}`);
+  p.bold(false);
   p.drawLine();
 
+  p.bold(true);
   for (const it of order.items || []) {
     const veg = it.isVegetarian ? "[V]" : "[N]";
     p.println(`${it.quantity}x ${it.name} ${veg}`);
     if (it.notes) p.println(`   >> ${it.notes}`);
   }
+  p.bold(false);
   p.drawLine();
 
   if (order.specialInstructions) {
+    p.bold(true);
     p.println(`NOTE: ${order.specialInstructions}`);
+    p.bold(false);
     p.drawLine();
   }
 
@@ -124,18 +130,21 @@ async function printBill(config, order, branding = {}) {
   p.setTextDoubleHeight();
   p.println((branding.name || "ASHOKA HOTEL").toUpperCase());
   p.setTextNormal();
-  p.bold(false);
   p.println("Tax Invoice");
+  p.bold(false);
   if (branding.gstNumber) p.println(`GSTIN: ${branding.gstNumber}`);
   if (branding.phone) p.println(String(branding.phone));
   p.drawLine();
 
   p.alignLeft();
+  p.bold(true);
   p.println(`Bill  : ${order.kotNumber || "-"}`);
   p.println(`Table : ${order.tableLabel || "-"}`);
   p.println(`Time  : ${fmtTime(order.createdAt)}`);
+  p.bold(false);
   p.drawLine();
 
+  p.bold(true);
   for (const it of order.items || []) {
     let name = it.name || "";
     if (it.variationName) name += ` (${it.variationName})`;
@@ -148,8 +157,10 @@ async function printBill(config, order, branding = {}) {
       p.println(`   + ${it.addons.map((a) => a.name).join(", ")}`);
     }
   }
+  p.bold(false);
   p.drawLine();
 
+  p.bold(true);
   p.tableCustom([
     { text: "Subtotal", align: "LEFT", width: 0.6 },
     { text: money(order.subtotal), align: "RIGHT", width: 0.4 },
@@ -170,7 +181,6 @@ async function printBill(config, order, branding = {}) {
       { text: money(order.tax / 2), align: "RIGHT", width: 0.4 },
     ]);
   }
-  p.bold(true);
   p.tableCustom([
     { text: "TOTAL", align: "LEFT", width: 0.6 },
     { text: money(order.total), align: "RIGHT", width: 0.4 },
@@ -183,7 +193,9 @@ async function printBill(config, order, branding = {}) {
   }
   p.drawLine();
   p.alignCenter();
+  p.bold(true);
   p.println("Thank you! Visit again.");
+  p.bold(false);
   p.cut();
   await p.execute();
 }

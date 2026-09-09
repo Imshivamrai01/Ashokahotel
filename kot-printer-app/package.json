@@ -7,17 +7,15 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "rebuild-usb": "electron-rebuild -f -w @thiagoelg/node-printer",
+    "build": "electron-builder --win --x64",
     "dist": "electron-builder --win --x64",
-    "postinstall": "electron-builder install-app-deps"
+    "dist:dir": "electron-builder --win --x64 --dir",
+    "dist:installer": "electron-builder --win --x64"
   },
   "dependencies": {
     "bonjour-service": "^1.3.0",
     "electron-store": "^8.2.0",
     "node-thermal-printer": "^4.4.4"
-  },
-  "optionalDependencies": {
-    "@thiagoelg/node-printer": "^0.6.2"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",
@@ -37,7 +35,9 @@
     ],
     "asarUnpack": ["**/*.node", "**/@thiagoelg/**"],
     "win": {
-      "target": "nsis"
+      "target": ["nsis", "portable"],
+      "sign": null,
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,

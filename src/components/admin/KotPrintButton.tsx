@@ -21,87 +21,97 @@ export const KotTicketContent = forwardRef<
     <div
       ref={ref}
       style={{
-        fontFamily: "'Courier New', Courier, monospace",
-        fontSize: "12px",
-        lineHeight: 1.4,
-        padding: "8mm",
+        fontFamily:
+          "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, monospace, sans-serif",
+        fontSize: "12.5px",
+        fontWeight: 700,
+        lineHeight: 1.35,
+        padding: "6mm 8mm",
         maxWidth: "80mm",
-        color: "#000",
-        background: "#fff",
+        color: "#000000",
+        background: "#ffffff",
+        WebkitFontSmoothing: "antialiased",
       }}
     >
-      <div style={{ textAlign: "center", marginBottom: 6 }}>
-        <div style={{ fontSize: 15, fontWeight: "bold", letterSpacing: 1 }}>
+      <div style={{ textAlign: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: 1, color: "#000000" }}>
           {hotelName.toUpperCase()}
         </div>
-        <div style={{ fontSize: 12, fontWeight: "bold" }}>
+        <div style={{ fontSize: 13, fontWeight: 900, marginTop: 2, color: "#000000" }}>
           KITCHEN ORDER TICKET
         </div>
-        <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
+        <div style={{ borderTop: "1.5px dashed #000000", margin: "6px 0" }} />
       </div>
 
-      <table style={{ width: "100%", fontSize: 11 }}>
+      <table style={{ width: "100%", fontSize: 12, fontWeight: 700, color: "#000000", borderCollapse: "collapse" }}>
         <tbody>
           <tr>
-            <td style={{ fontWeight: "bold" }}>KOT #:</td>
-            <td style={{ textAlign: "right", fontWeight: "bold" }}>
+            <td style={{ fontWeight: 900, padding: "1px 0" }}>KOT #:</td>
+            <td style={{ textAlign: "right", fontWeight: 900, fontSize: 14, padding: "1px 0" }}>
               {order.kotNumber}
             </td>
           </tr>
           <tr>
-            <td>Date:</td>
-            <td style={{ textAlign: "right" }}>
+            <td style={{ padding: "1px 0" }}>Date:</td>
+            <td style={{ textAlign: "right", padding: "1px 0" }}>
               {format(new Date(order.createdAt), "dd MMM yyyy  HH:mm")}
             </td>
           </tr>
           <tr>
-            <td>Table:</td>
-            <td style={{ textAlign: "right" }}>{order.tableLabel}</td>
+            <td style={{ fontWeight: 800, padding: "1px 0" }}>Table:</td>
+            <td style={{ textAlign: "right", fontWeight: 900, fontSize: 13, padding: "1px 0" }}>
+              {order.tableLabel}
+            </td>
           </tr>
           <tr>
-            <td>Captain:</td>
-            <td style={{ textAlign: "right" }}>{order.captainName}</td>
+            <td style={{ padding: "1px 0" }}>Captain:</td>
+            <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
+              {order.captainName}
+            </td>
           </tr>
         </tbody>
       </table>
 
-      <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
+      <div style={{ borderTop: "1.5px dashed #000000", margin: "6px 0" }} />
 
-      <table style={{ width: "100%", fontSize: 12 }}>
+      <table style={{ width: "100%", fontSize: 12.5, color: "#000000", borderCollapse: "collapse" }}>
         <thead>
-          <tr>
-            <td style={{ fontWeight: "bold", width: "15%" }}>QTY</td>
-            <td style={{ fontWeight: "bold" }}>ITEM</td>
+          <tr style={{ fontWeight: 900 }}>
+            <td style={{ fontWeight: 900, width: "18%", paddingBottom: 2 }}>QTY</td>
+            <td style={{ fontWeight: 900, paddingBottom: 2 }}>ITEM</td>
           </tr>
           <tr>
             <td colSpan={2}>
-              <div style={{ borderTop: "1px solid #000" }} />
+              <div style={{ borderTop: "2px solid #000000", margin: "2px 0 4px" }} />
             </td>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item._id}>
+            <tr key={item._id} style={{ fontWeight: 700 }}>
               <td
                 style={{
                   verticalAlign: "top",
-                  fontWeight: "bold",
-                  fontSize: 14,
+                  fontWeight: 900,
+                  fontSize: 15,
+                  paddingRight: 4,
+                  paddingTop: 3,
+                  paddingBottom: 3,
                 }}
               >
                 {item.quantity}
               </td>
-              <td style={{ verticalAlign: "top", paddingBottom: 4 }}>
-                <span style={{ fontWeight: "bold" }}>{item.name}</span>
+              <td style={{ verticalAlign: "top", paddingTop: 3, paddingBottom: 3 }}>
+                <span style={{ fontWeight: 900, fontSize: 13 }}>{item.name}</span>
                 {item.variationName && ` (${item.variationName})`}
                 {item.isNC && " (NC)"}
                 {item.addons && item.addons.length > 0 && (
-                  <div style={{ fontSize: 11 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 1 }}>
                     + {item.addons.map((a) => a.name).join(", ")}
                   </div>
                 )}
                 {item.notes && (
-                  <div style={{ fontSize: 11, fontStyle: "italic" }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, fontStyle: "italic", marginTop: 1 }}>
                     * {item.notes}
                   </div>
                 )}
@@ -113,15 +123,15 @@ export const KotTicketContent = forwardRef<
 
       {order.specialInstructions && (
         <>
-          <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
-          <div style={{ fontSize: 11 }}>
+          <div style={{ borderTop: "1.5px dashed #000000", margin: "6px 0" }} />
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#000000" }}>
             <strong>Special:</strong> {order.specialInstructions}
           </div>
         </>
       )}
 
-      <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
-      <div style={{ textAlign: "center", fontSize: 10, marginTop: 4 }}>
+      <div style={{ borderTop: "1.5px dashed #000000", margin: "6px 0" }} />
+      <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, marginTop: 4, color: "#000000" }}>
         ✂ - - - - - - - - - - - - - - - -
       </div>
     </div>
@@ -143,7 +153,7 @@ export default function KotPrintButton({
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: `KOT-${order.kotNumber}`,
-    pageStyle: `@page { size: 80mm auto; margin: 0; } @media print { body { margin: 0; } }`,
+    pageStyle: `@page { size: 80mm auto; margin: 0; } @media print { body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; } * { color: #000000 !important; } }`,
   });
 
   return (
