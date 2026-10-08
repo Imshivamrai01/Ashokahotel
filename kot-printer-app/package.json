@@ -1,6 +1,6 @@
 {
   "name": "regalia-kot-printer-agent",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Local tray agent that polls Ashoka Hotel for unprinted KOTs and sends them to a thermal printer (USB or Ethernet).",
   "main": "main.js",
   "author": "Ashoka Hotel",

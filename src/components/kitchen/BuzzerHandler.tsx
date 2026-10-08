@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useBuzzer } from "@/hooks/useBuzzer";
+import { useBuzzer, useAudioBlocked, unlockAudio, playKitchenChime } from "@/hooks/useBuzzer";
 
 interface BuzzerHandlerProps {
   pendingKotCount: number;
@@ -16,6 +16,8 @@ export default function BuzzerHandler({
   enabled = true,
 }: BuzzerHandlerProps) {
   useBuzzer(pendingKotCount, enabled);
+  const audioBlocked = useAudioBlocked();
+  const showUnlock = audioBlocked && enabled && pendingKotCount > 0;
   const prevCount = useRef(newKotCount);
   const [isFlashing, setIsFlashing] = useState(false);
 
@@ -31,6 +33,19 @@ export default function BuzzerHandler({
 
   return (
     <AnimatePresence>
+      {showUnlock && (
+        <button
+          key="unlock"
+          type="button"
+          onClick={() => {
+            unlockAudio();
+            playKitchenChime();
+          }}
+          className="fixed top-0 inset-x-0 z-[60] bg-error text-error-content font-bold text-sm py-3 px-4 text-center animate-pulse cursor-pointer"
+        >
+          🔇 Order alarm is muted by the browser — tap here to turn the sound on
+        </button>
+      )}
       {isFlashing && (
         <motion.div
           key="flash"

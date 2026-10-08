@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import { Clock, ChevronDown, ChevronUp, Printer } from "lucide-react";
 import { useReactToPrint } from "react-to-print";
 import { KotTicketContent } from "@/components/admin/KotPrintButton";
@@ -63,12 +64,37 @@ export default function KOTCard({
     pageStyle: `@page { size: 80mm auto; margin: 0; } @media print { body { margin: 0; } }`,
   });
 
-  const handlePrintKOT = () => {
-    // 1. Try RawBT (if running on Android with OTG printer)
-    const printedRawBT = printKotViaRawBT(order, "ASHOKA HOTEL");
-    if (!printedRawBT) {
-      // 2. Fallback to standard browser print
-      handleBrowserPrint();
+  const [printing, setPrinting] = useState(false);
+
+  // Print on a printer attached to THIS device (RawBT on Android, else the
+  // browser print dialog). Only used when the PC print agent can't take the job.
+  const printOnThisDevice = () => {
+    if (!printKotViaRawBT(order, "ASHOKA HOTEL")) handleBrowserPrint();
+  };
+
+  // Ask the PC print agent to print this KOT on the kitchen printer(s). Works
+  // from any phone/tablet — the device itself needs no printer.
+  const handlePrintKOT = async () => {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      const res = await fetch(`/api/orders/${order._id}/reprint`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.agentOnline && data.printers > 0) {
+        toast.success(`KOT ${order.kotNumber} sent to the kitchen printer`);
+        return;
+      }
+      toast.warning(
+        res.ok
+          ? "Printer app on the PC is not running — printing from this device"
+          : "Could not reach the printer — printing from this device",
+      );
+      printOnThisDevice();
+    } catch {
+      toast.warning("No connection — printing from this device");
+      printOnThisDevice();
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -210,7 +236,8 @@ export default function KOTCard({
           <button
             onClick={handlePrintKOT}
             className="btn btn-sm btn-outline border-base-content/20 hover:bg-amber-500 hover:border-amber-500 hover:text-white gap-1.5 shrink-0"
-            title="Print KOT via OTG Thermal Printer"
+            disabled={printing}
+            title="Print KOT on the kitchen printer"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print KOT</span>

@@ -116,6 +116,7 @@ async function printKot(config, order) {
   p.setTextDoubleWidth();
   p.println("** KOT **");
   p.setTextNormal();
+  if (order.reprint) p.println("(REPRINT)");
   p.bold(false);
   p.drawLine();
 

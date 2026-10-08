@@ -98,6 +98,8 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
       return res.json();
     },
     refetchInterval: 4000,
+    // Keep checking when the tab is not in front, so a new order still rings.
+    refetchIntervalInBackground: true,
   });
 
   // 2. Fetch Cashier Billing Tables
@@ -152,6 +154,8 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
 
   const [confirmedOrderIds, setConfirmedOrderIds] = useState<Set<string>>(new Set());
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  // True while the browser refuses to play the alarm (no tap on the page yet).
+  const [soundBlocked, setSoundBlocked] = useState(false);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const stopReceptionAudio = useCallback(() => {
@@ -173,14 +177,23 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
       audio.volume = 0.9;
       const playPromise = audio.play();
       if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          try {
-            const fallback = new Audio("/staffcallbeep.mp3");
-            activeAudioRef.current = fallback;
-            fallback.volume = 0.8;
-            fallback.play().catch(() => {});
-          } catch {}
-        });
+        playPromise
+          .then(() => setSoundBlocked(false))
+          .catch((err: unknown) => {
+            if ((err as { name?: string })?.name === "NotAllowedError") {
+              setSoundBlocked(true);
+              return;
+            }
+            try {
+              const fallback = new Audio("/staffcallbeep.mp3");
+              activeAudioRef.current = fallback;
+              fallback.volume = 0.8;
+              fallback
+                .play()
+                .then(() => setSoundBlocked(false))
+                .catch(() => {});
+            } catch {}
+          });
       }
     } catch {}
   }, [soundEnabled, stopReceptionAudio]);
@@ -544,6 +557,15 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-hidden flex flex-col bg-[#FAF9F6]">
+        {soundBlocked && soundEnabled && (unconfirmedOrders.length > 0 || roomCalls.length > 0) && (
+          <button
+            type="button"
+            onClick={() => playReceptionChime()}
+            className="bg-red-600 text-white font-bold text-sm py-2.5 px-4 text-center animate-pulse cursor-pointer shrink-0"
+          >
+            🔇 Order alarm is muted by the browser — tap here to turn the sound on
+          </button>
+        )}
         {/* Active Room / Table Guest Calls Banner */}
         {roomCalls.length > 0 && (
           <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white px-4 py-2.5 shadow-md flex items-center justify-between gap-3 shrink-0">

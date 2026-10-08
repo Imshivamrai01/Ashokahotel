@@ -1,11 +1,36 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 // Global audio context & unlock state so any user click unlocks audio permanently
 let globalAudioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
 let currentChimeAudio: HTMLAudioElement | null = null;
+
+// Browsers refuse to play sound until the user has tapped the page once (e.g.
+// after a reload). Track that so the UI can ask for the tap instead of the
+// alarm failing silently.
+let audioBlocked = false;
+const blockedListeners = new Set<() => void>();
+function setAudioBlocked(value: boolean) {
+  if (audioBlocked === value) return;
+  audioBlocked = value;
+  blockedListeners.forEach((l) => l());
+}
+function subscribeBlocked(listener: () => void) {
+  blockedListeners.add(listener);
+  return () => {
+    blockedListeners.delete(listener);
+  };
+}
+/** True while the browser is refusing to play the alarm. */
+export function useAudioBlocked(): boolean {
+  return useSyncExternalStore(
+    subscribeBlocked,
+    () => audioBlocked,
+    () => false,
+  );
+}
 
 export function unlockAudio() {
   if (typeof window === "undefined") return;
@@ -45,6 +70,7 @@ export function playKitchenChime() {
     if (playPromise !== undefined) {
       playPromise
         .then(() => {
+          setAudioBlocked(false);
           setTimeout(() => {
             try {
               if (currentChimeAudio === audio) {
@@ -55,7 +81,8 @@ export function playKitchenChime() {
             } catch {}
           }, 2500);
         })
-        .catch(() => {
+        .catch((err: unknown) => {
+          if ((err as { name?: string })?.name === "NotAllowedError") setAudioBlocked(true);
           // Fallback to Web Audio synthesiser
           playSynthesizedBeep();
         });

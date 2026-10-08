@@ -123,6 +123,8 @@ export interface IOrderDoc extends Document {
   kotPrinted?: boolean; // physical KOT printed by the local print agent
   kotPrintedAt?: Date; // timestamp of first successful print
   kotPrintAttempts?: number; // retry counter
+  kotReprintSeq?: number; // bumped each time staff press Print on the KOT card
+  kotReprintAt?: Date; // when the last reprint was asked for
   // Customer bill (tax invoice) printing via the local agent's BILL printer.
   billPrintRequested?: boolean; // cashier asked to print the bill
   billPrinted?: boolean;
@@ -271,6 +273,8 @@ const OrderSchema = new Schema<IOrderDoc>(
     kotPrinted: { type: Boolean, default: false },
     kotPrintedAt: { type: Date },
     kotPrintAttempts: { type: Number, default: 0 },
+    kotReprintSeq: { type: Number, default: 0 },
+    kotReprintAt: { type: Date },
     billPrintRequested: { type: Boolean, default: false },
     billPrinted: { type: Boolean, default: false },
     billPrintedAt: { type: Date },

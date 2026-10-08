@@ -479,9 +479,11 @@ async function poll() {
     let printed = 0;
     let skipped = 0;
     for (const order of queue) {
-      if (printedSession.has(order._id)) continue;
-      if (new Date(order.createdAt).getTime() < cutoff) {
-        rememberPrinted(order._id); // placed before this app was installed
+      // printKey changes when staff press Print on the KOT card, so that prints again.
+      const key = order.printKey || order._id;
+      if (printedSession.has(key)) continue;
+      if (!order.reprint && new Date(order.createdAt).getTime() < cutoff) {
+        rememberPrinted(key); // placed before this app was installed
         skipped++;
         continue;
       }
@@ -495,11 +497,11 @@ async function poll() {
         await handlePrintFailure(failed[0].error);
         return; // still unmarked — it is retried on the next poll
       }
-      rememberPrinted(order._id);
+      rememberPrinted(key);
       recordPrint(order, true);
       logEvent(
         "info",
-        `Printed ${order.kotNumber} → ${order.tableLabel} on ${results.filter((r) => r.ok).map((r) => r.p.name).join(" + ")}`,
+        `${order.reprint ? "Reprinted" : "Printed"} ${order.kotNumber} → ${order.tableLabel} on ${results.filter((r) => r.ok).map((r) => r.p.name).join(" + ")}`,
       );
       for (const f of failed) {
         logEvent("warn", `${f.p.name} missed ${order.kotNumber}: ${f.error} — will retry`);

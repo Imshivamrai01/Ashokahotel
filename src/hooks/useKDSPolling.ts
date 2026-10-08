@@ -66,9 +66,10 @@ export function useKDSPolling(): UseKDSPollingResult {
   } = useQuery<IOrder[]>({
     queryKey: ["kds-orders"],
     queryFn: fetchActiveOrders,
-    // Adaptive: 3s when active orders exist, 15s when quiet
-    refetchInterval: hasActiveOrders ? 3000 : 15000,
-    refetchIntervalInBackground: false,
+    // Adaptive: 3s when active orders exist, 5s when quiet. Keeps polling when
+    // the tab is not in front, so a new order still starts the alarm.
+    refetchInterval: hasActiveOrders ? 3000 : 5000,
+    refetchIntervalInBackground: true,
   });
 
   useEffect(() => {
