@@ -168,11 +168,14 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
     }
   }, []);
 
+  // Starts the reception tune on a loop; does nothing while it is already sounding.
   const playReceptionChime = useCallback(() => {
     if (!soundEnabled || typeof window === "undefined") return;
+    if (activeAudioRef.current && !activeAudioRef.current.paused) return;
     try {
       stopReceptionAudio();
-      const audio = new Audio("/alert.webm");
+      const audio = new Audio("/reception.mp3");
+      audio.loop = true;
       activeAudioRef.current = audio;
       audio.volume = 0.9;
       const playPromise = audio.play();
@@ -180,6 +183,7 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
         playPromise
           .then(() => setSoundBlocked(false))
           .catch((err: unknown) => {
+            if (activeAudioRef.current === audio) activeAudioRef.current = null;
             if ((err as { name?: string })?.name === "NotAllowedError") {
               setSoundBlocked(true);
               return;
@@ -229,34 +233,35 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
 
   const prevUnconfirmedCount = useRef(0);
 
-  // Sound chime when new unconfirmed order or room call is waiting
   useEffect(() => {
-    if (!soundEnabled || (unconfirmedOrders.length === 0 && roomCalls.length === 0)) {
-      stopReceptionAudio();
-      prevUnconfirmedCount.current = unconfirmedOrders.length;
-      return;
-    }
-
     if (unconfirmedOrders.length > prevUnconfirmedCount.current) {
       toast.info(`🔔 New Room Order received! (${unconfirmedOrders.length} waiting confirmation)`, {
         duration: 6000,
       });
     }
     prevUnconfirmedCount.current = unconfirmedOrders.length;
+  }, [unconfirmedOrders.length]);
 
-    // Play chime immediately
+  // Alarm on a loop while an unconfirmed order or room call is waiting. Depends
+  // on "is anything waiting", not the counts, so the tune plays through instead
+  // of restarting each time another order arrives.
+  const alarmActive = soundEnabled && (unconfirmedOrders.length > 0 || roomCalls.length > 0);
+  useEffect(() => {
+    if (!alarmActive) {
+      stopReceptionAudio();
+      return;
+    }
+
     playReceptionChime();
 
-    // Repeat chime periodically until order is accepted/confirmed or call dismissed
-    const interval = setInterval(() => {
-      playReceptionChime();
-    }, 4500);
+    // Watchdog: if the browser blocked or dropped the sound, start it again.
+    const interval = setInterval(playReceptionChime, 4500);
 
     return () => {
       clearInterval(interval);
       stopReceptionAudio();
     };
-  }, [unconfirmedOrders.length, roomCalls.length, soundEnabled, playReceptionChime, stopReceptionAudio]);
+  }, [alarmActive, playReceptionChime, stopReceptionAudio]);
 
   // Mutations
   const confirmMutation = useMutation({

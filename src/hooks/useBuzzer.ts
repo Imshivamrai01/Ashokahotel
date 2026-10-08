@@ -6,6 +6,9 @@ import { useEffect, useSyncExternalStore } from "react";
 let globalAudioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
 let currentChimeAudio: HTMLAudioElement | null = null;
+// True while the looping order alarm owns currentChimeAudio (vs. a short preview).
+let alarmLooping = false;
+const KITCHEN_ALARM = "/kitchen.mp3";
 
 // Browsers refuse to play sound until the user has tapped the page once (e.g.
 // after a reload). Track that so the UI can ask for the tap instead of the
@@ -55,15 +58,48 @@ export function stopKitchenChime() {
     } catch {}
     currentChimeAudio = null;
   }
+  alarmLooping = false;
 }
 
-export function playKitchenChime() {
+/**
+ * Start the order alarm: the kitchen tune on a loop until stopKitchenChime().
+ * Safe to call repeatedly — it does nothing while the alarm is already sounding.
+ */
+export function startKitchenAlarm() {
   if (typeof window === "undefined") return;
-
-  // 1. Try playing the loud buzzer MP3
+  if (alarmLooping && currentChimeAudio && !currentChimeAudio.paused) return;
   try {
     stopKitchenChime();
-    const audio = new Audio("/buzzer.mp3");
+    const audio = new Audio(KITCHEN_ALARM);
+    audio.loop = true;
+    audio.volume = 1.0;
+    currentChimeAudio = audio;
+    alarmLooping = true;
+    audio
+      .play()
+      .then(() => setAudioBlocked(false))
+      .catch((err: unknown) => {
+        if (currentChimeAudio === audio) {
+          currentChimeAudio = null;
+          alarmLooping = false;
+        }
+        if ((err as { name?: string })?.name === "NotAllowedError") setAudioBlocked(true);
+        // Fallback to Web Audio synthesiser
+        playSynthesizedBeep();
+      });
+  } catch {
+    playSynthesizedBeep();
+  }
+}
+
+/** Short preview of the alarm tune (the Sound ON button). */
+export function playKitchenChime() {
+  if (typeof window === "undefined") return;
+  if (alarmLooping) return; // the real alarm is already sounding
+
+  try {
+    stopKitchenChime();
+    const audio = new Audio(KITCHEN_ALARM);
     currentChimeAudio = audio;
     audio.volume = 1.0;
     const playPromise = audio.play();
@@ -127,7 +163,7 @@ function playSynthesizedBeep() {
 }
 
 /**
- * useBuzzer — continuously plays a loud alert chime as long as pendingKotCount > 0,
+ * useBuzzer — plays the kitchen alarm on a loop for as long as pendingKotCount > 0,
  * and stops immediately once order preparation starts (pendingKotCount === 0).
  */
 export function useBuzzer(pendingKotCount: number, enabled: boolean = true) {
@@ -146,24 +182,24 @@ export function useBuzzer(pendingKotCount: number, enabled: boolean = true) {
     };
   }, []);
 
+  // Depends on "is anything pending", not the count, so the tune keeps playing
+  // through instead of restarting each time another order arrives.
+  const active = enabled && pendingKotCount > 0;
   useEffect(() => {
-    if (!enabled || pendingKotCount <= 0) {
+    if (!active) {
       stopKitchenChime();
       return;
     }
 
-    // Immediately chime once on incoming pending order
-    playKitchenChime();
+    startKitchenAlarm();
 
-    // Repeat chime every 3.5 seconds until all pending orders start preparing
-    const interval = setInterval(() => {
-      playKitchenChime();
-    }, 3500);
+    // Watchdog: if the browser blocked or dropped the sound, start it again.
+    const interval = setInterval(startKitchenAlarm, 3500);
 
     return () => {
       clearInterval(interval);
       stopKitchenChime();
     };
-  }, [pendingKotCount, enabled]);
+  }, [active]);
 }
 

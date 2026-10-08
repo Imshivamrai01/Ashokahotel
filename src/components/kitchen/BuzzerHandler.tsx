@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useBuzzer, useAudioBlocked, unlockAudio, playKitchenChime } from "@/hooks/useBuzzer";
+import { useBuzzer, useAudioBlocked, unlockAudio, startKitchenAlarm } from "@/hooks/useBuzzer";
 
 interface BuzzerHandlerProps {
   pendingKotCount: number;
@@ -39,7 +39,7 @@ export default function BuzzerHandler({
           type="button"
           onClick={() => {
             unlockAudio();
-            playKitchenChime();
+            startKitchenAlarm();
           }}
           className="fixed top-0 inset-x-0 z-[60] bg-error text-error-content font-bold text-sm py-3 px-4 text-center animate-pulse cursor-pointer"
         >
