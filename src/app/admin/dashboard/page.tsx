@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { StatCardsSkeleton, TableSkeleton } from "@/components/ui/Skeletons";
+import InvoicePrinterSelect from "@/components/print/InvoicePrinterSelect";
 
 interface DashboardData {
   metrics: {
@@ -126,6 +127,10 @@ export default function AdminDashboardPage() {
           </button>
         }
       />
+
+      <div className="rounded-2xl bg-base-200 border border-base-300/60 px-4 py-3 mb-6">
+        <InvoicePrinterSelect className="text-base-content flex-wrap" />
+      </div>
 
       {isError && (
         <div className="alert alert-error mb-6 text-sm">

@@ -60,12 +60,17 @@ npm install
 npm start
 ```
 
-On first launch the agent **automatically scans the network** (mDNS + a port-9100
-sweep) and the USB printers:
+On every launch the agent **finds and tests every printer** it can reach:
 
-- **Exactly one printer found** → it is selected automatically and printing
-  starts. Nothing to configure.
-- **Multiple / none** → Settings opens so you can pick. The list auto-populates.
+- **USB** — printers physically plugged into this PC (no driver needed).
+- **WiFi / Ethernet** — mDNS plus a port-9100 sweep of the local network.
+- **Bluetooth** — printers already paired in Windows.
+
+Each one is asked for its ESC/POS status, so only a real receipt printer that
+answers is used. The best working one is selected automatically (USB first, then
+network, then Bluetooth) and printing starts. If it stops responding the agent
+scans again and switches to another connection. The **Printer** tab lists
+everything found; **Use** picks one by hand.
 
 The tray dot is **green** when healthy, **red** on error (hover for the reason).
 Right-click the tray for **Find printer**, **Test Print**, **Print Now**,
@@ -73,7 +78,7 @@ Right-click the tray for **Find printer**, **Test Print**, **Print Now**,
 
 ## 3. Printer wiring
 
-### WiFi or Ethernet (recommended — no native module)
+### WiFi or Ethernet
 
 A WiFi printer and an Ethernet printer look identical to the agent: both get a
 LAN IP and listen on port **9100**.
@@ -90,31 +95,15 @@ appears instantly; otherwise the port-9100 sweep finds it within a few seconds.
 
 ### USB
 
-USB printing needs a native module; WiFi/Ethernet does not. Prefer network unless
-the printer must be cabled to this PC.
+Plug the printer into the PC and switch it on — that is all. The agent writes to
+the USB device directly, so no printer driver and no native Node module are
+required. (A printer that only exists as a Windows printer queue can still be
+picked under **Manual setup**; it is sent as a RAW job through the spooler.)
 
-1. Install the TVS driver so the printer appears as a named Windows printer.
-2. Add the native driver and build it against Electron's ABI:
-   ```bash
-   npm install @thiagoelg/node-printer --ignore-scripts
-   npm run rebuild-usb
-   ```
-   **`--ignore-scripts` matters:** the driver is an `optionalDependency`. On a
-   newer system Node (e.g. v24) the install-time native build can fail, and npm
-   then *silently drops* the optional package — so it never reaches the build.
-   `--ignore-scripts` skips that throwaway system-node build; `rebuild-usb`
-   (electron-rebuild) then compiles the `.node` against Electron, which is the
-   only ABI that matters at runtime.
+### Bluetooth
 
-   Requires Visual Studio Build Tools with the "Desktop development with C++"
-   workload + Python. The old `printer` package is abandoned and won't build on
-   Electron 31 — use `@thiagoelg/node-printer`.
-
-   Verify it loaded (lists your Windows printers):
-   ```bash
-   node_modules/.bin/electron -e "const{app}=require('electron');app.whenReady().then(()=>{console.log(require('@thiagoelg/node-printer').getPrinters().map(p=>p.name));app.quit()})"
-   ```
-3. Settings → USB → Scan → pick the printer. Save → Test Print.
+Pair the printer once in Windows (Settings → Bluetooth & devices). After that it
+shows up in the scan like any other printer.
 
 ## 4. Build an installer (.exe)
 

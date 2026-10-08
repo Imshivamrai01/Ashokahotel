@@ -38,6 +38,7 @@ import TableStatusGrid from "@/components/cashier/TableStatusGrid";
 import CashierInvoices from "@/components/cashier/CashierInvoices";
 import CancelOrderModal from "@/components/captain/CancelOrderModal";
 import KotPrintButton from "@/components/admin/KotPrintButton";
+import InvoicePrinterSelect from "@/components/print/InvoicePrinterSelect";
 import { useCaptainCallAlerts } from "@/hooks/useCaptainCallAlerts";
 import { UserCheck, Users, ChefHat } from "lucide-react";
 
@@ -498,6 +499,7 @@ export default function ReceptionistPageClient({ staffName, role }: Props) {
 
         {/* Right Exit / Sign out & Sound Toggle */}
         <div className="flex items-center gap-2">
+          <InvoicePrinterSelect className="hidden md:flex text-slate-700 mr-1" />
           <button
             onClick={() => {
               if (soundEnabled) stopReceptionAudio();

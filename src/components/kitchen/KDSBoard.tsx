@@ -69,9 +69,7 @@ export default function KDSBoard() {
       (o) =>
         o.status === "pending" ||
         (o.items &&
-          o.items.some(
-            (i) => i.itemStatus === "pending" && i.itemStatus !== "cancelled",
-          )),
+          o.items.some((i) => i.itemStatus === "pending")),
     ).length;
   }, [orders]);
 

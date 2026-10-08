@@ -136,47 +136,46 @@ $("bTest").onclick = $("bTest2").onclick = async () => {
   await window.agent.testPrint();
 };
 $("bPrintNow").onclick = () => window.agent.printNow();
-$("bFind").onclick = () => window.agent.autodetect();
 
-// ── Bill printer ──────────────────────────────────────────────────────────────
-let billTransport = "tcp";
-function setBillTransport(t) {
-  billTransport = t;
-  $("bseg-tcp").classList.toggle("active", t === "tcp");
-  $("bseg-usb").classList.toggle("active", t === "usb");
-  $("billTcpBox").classList.toggle("hide", t !== "tcp");
-  $("billUsbBox").classList.toggle("hide", t !== "usb");
+// ── Connected printers ────────────────────────────────────────────────────────
+const TRANSPORT_LABEL = { usb: "USB", tcp: "WiFi/LAN", bt: "Bluetooth" };
+function renderPrinters(list) {
+  const printers = list || [];
+  const body = $("detBody");
+  body.innerHTML = "";
+  $("detEmpty").classList.toggle("hide", printers.length > 0);
+  const working = printers.filter((p) => p.usable);
+  $("detCount").textContent = printers.length ? `· ${working.length} working` : "";
+  for (const p of printers) {
+    const tr = document.createElement("tr");
+    const status = p.usable ? "working" : p.shadowed ? "duplicate" : "not usable";
+    tr.innerHTML =
+      `<td>${escapeHtml(TRANSPORT_LABEL[p.transport] || p.transport)}</td>` +
+      `<td>${escapeHtml(p.name)}<br/><small style="color:var(--muted)">${escapeHtml(p.address || "")}${p.note ? " · " + escapeHtml(p.note) : ""}</small></td>` +
+      `<td><span class="badge ${p.usable ? "ok" : "bad"}">${status}</span></td>` +
+      `<td>${p.usable ? '<input type="checkbox" style="width:auto"' + (p.kot ? " checked" : "") + " />" : ""}</td>` +
+      `<td>${p.bill ? '<span class="badge ok">invoice</span>' : ""}</td>`;
+    const box = tr.querySelector("input");
+    if (box) box.onchange = () => window.agent.setKotEnabled(p.id, box.checked);
+    body.appendChild(tr);
+  }
+  const kot = printers.filter((p) => p.kot);
+  const bill = printers.find((p) => p.bill);
+  const label = (p) => `${p.name} (${TRANSPORT_LABEL[p.transport] || p.transport})`;
+  $("dPrinter").textContent = kot.length ? kot.map(label).join(" + ") : "none";
+  $("dBill").textContent = bill ? label(bill) : "none";
 }
-$("bseg-tcp").onclick = () => setBillTransport("tcp");
-$("bseg-usb").onclick = () => setBillTransport("usb");
-$("billEnabled").onchange = (e) =>
-  $("billBox").classList.toggle("hide", !e.target.checked);
-$("scanBillUsb").onclick = async (e) => {
+async function scanAndConnect(e) {
+  const text = e.target.textContent;
   e.target.textContent = "Scanning…";
   e.target.disabled = true;
-  const names = await window.agent.listUsb();
-  e.target.textContent = "Scan";
+  await window.agent.autodetect();
+  e.target.textContent = text;
   e.target.disabled = false;
-  $("billUsbResults").innerHTML = '<option value="">— select —</option>';
-  names.forEach((n) => addOption("billUsbResults", n));
-  if (!names.length) addOption("billUsbResults", "none found", false);
-};
-$("bSaveBill").onclick = async () => {
-  await window.agent.saveBillConfig({
-    billEnabled: $("billEnabled").checked,
-    billTransport,
-    billPrinterIp: $("billPrinterIp").value.trim(),
-    billPrinterPort: Number($("billPrinterPort").value) || 9100,
-    billUsbPrinterName: $("billUsbResults").value || config.billUsbPrinterName || "",
-  });
-};
-$("bTestBill").onclick = () => window.agent.testBill();
-
-// ── Printer summary line ──────────────────────────────────────────────────────
-function printerSummary(c) {
-  if (c.transport === "usb") return c.usbPrinterName ? `USB · ${c.usbPrinterName}` : "USB · not set";
-  return c.printerIp ? `WiFi/LAN · ${c.printerIp}:${c.printerPort || 9100}` : "WiFi/LAN · not set";
 }
+$("bDetect").onclick = scanAndConnect;
+$("bFind").onclick = scanAndConnect;
+$("bTestBill").onclick = () => window.agent.testBill();
 
 // ── Hydrate ───────────────────────────────────────────────────────────────────
 async function load() {
@@ -186,23 +185,14 @@ async function load() {
   $("dServer").textContent = config.serverUrl || "—";
   $("sServer").textContent = config.serverUrl || "—";
   $("sToken").textContent = config.tokenConfigured ? "configured ✓" : "NOT set ✕";
-  $("dPrinter").textContent = printerSummary(config);
   $("printerIp").value = config.printerIp || "";
   $("printerPort").value = config.printerPort || 9100;
   $("pollMs").value = config.pollMs || 4000;
   $("autoLaunch").checked = config.autoLaunch !== false;
   if (config.printerIp) addOption("lanResults", config.printerIp, true);
   if (config.usbPrinterName) addOption("usbResults", config.usbPrinterName, true);
-  setTransport(config.transport || "tcp");
-
-  // Bill printer hydrate
-  $("billEnabled").checked = !!config.billEnabled;
-  $("billBox").classList.toggle("hide", !config.billEnabled);
-  $("billPrinterIp").value = config.billPrinterIp || "";
-  $("billPrinterPort").value = config.billPrinterPort || 9100;
-  if (config.billUsbPrinterName)
-    addOption("billUsbResults", config.billUsbPrinterName, true);
-  setBillTransport(config.billTransport || "tcp");
+  setTransport(config.transport === "usb" ? "usb" : "tcp");
+  renderPrinters(s.printers);
 
   if (config.tokenConfigured === false) {
     $("tokenWarn").classList.remove("hide");
@@ -221,7 +211,7 @@ window.agent.onState((s) => {
   setStatus(s.status);
   setStats(s.stats);
   renderHistory(s.history);
-  $("dPrinter").textContent = printerSummary(config);
+  if (s.printers) renderPrinters(s.printers);
 });
 load();
 

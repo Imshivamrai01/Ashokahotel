@@ -149,4 +149,218 @@ function listUsbPrinters() {
   });
 }
 
-module.exports = { scanLan, listUsbPrinters, localSubnets, portScan, discoverMdns };
+// ── Unified auto-detect (USB + LAN + Bluetooth) ──────────────────────────────
+const {
+  listWindowsPrinters,
+  listUsbPrintDevices,
+  sendUsbDirect,
+  listBluetoothPorts,
+  sendSerial,
+} = require("./winraw");
+
+// ESC/POS real-time status request (DLE EOT 1). A genuine receipt printer answers
+// with one byte shaped 0xx1xx10; an office printer on port 9100 stays silent.
+const STATUS_REQUEST = Buffer.from([0x10, 0x04, 0x01]);
+const isEscposStatus = (b) => typeof b === "number" && (b & 0x93) === 0x12;
+// Win32 PRINTER_STATUS bits that mean the queue cannot reach its device:
+// ERROR (0x2) | OFFLINE (0x80) | NOT_AVAILABLE (0x1000).
+const QUEUE_DEAD = 0x2 | 0x80 | 0x1000;
+
+const VIRTUAL_PORT = /^(nul:|PORTPROMPT:|FILE:|XPSPort:|SHRFAX:|AD_Port|TS\d+)/i;
+const VIRTUAL_NAME = /PDF|OneNote|XPS|Fax|AnyDesk|Send To/i;
+const NETWORK_PORT = /^(IP_|IP6_|WSD|http|\d{1,3}(\.\d{1,3}){3})/i;
+const THERMAL_NAME =
+  /RP\d{3,}|KPC\d|posiflow|\bPOS\b|POS-?\d|thermal|receipt|TM-|TSP\d|XP-\d|rugtek|\bTVS\b|80mm|58mm|ESC\/?POS/i;
+
+/** Ask a host on port 9100 for its ESC/POS status. True only for a real reply. */
+function probeEscposTcp(host, port = 9100, timeout = 900) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeout);
+    socket.once("data", (d) => finish(isEscposStatus(d[0])));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+    socket.once("close", () => finish(false));
+    socket.connect(port, host, () => socket.write(STATUS_REQUEST));
+  });
+}
+
+// A 12-hex hardware address identifies the physical printer whichever way it is
+// connected (USB serial, network MAC, Bluetooth address). Only an EXACT match is
+// treated as "same printer" — near matches could be two units of one model.
+const hex12 = (s) => {
+  const h = String(s || "").replace(/[^0-9a-f]/gi, "").toUpperCase();
+  return h.length === 12 ? h : "";
+};
+
+/** ip -> MAC for hosts this PC has recently talked to (from the ARP cache). */
+function arpTable() {
+  return new Promise((resolve) => {
+    execFile("arp", ["-a"], { windowsHide: true, timeout: 5000 }, (err, stdout) => {
+      const map = {};
+      if (!err && stdout) {
+        for (const line of stdout.split(/\r?\n/)) {
+          const m = line.match(/(\d+\.\d+\.\d+\.\d+)\s+((?:[0-9a-f]{2}[-:]){5}[0-9a-f]{2})/i);
+          if (m) map[m[1]] = hex12(m[2]);
+        }
+      }
+      resolve(map);
+    });
+  });
+}
+
+async function detectUsb() {
+  const out = [];
+  // 1) Printers physically plugged in over USB — tested by asking for their status.
+  const devices = await listUsbPrintDevices();
+  for (const d of devices) {
+    let online = false;
+    let thermal = false;
+    let note = "";
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const reply = await sendUsbDirect(d.path, STATUS_REQUEST, { expectReply: true });
+      online = true;
+      thermal = isEscposStatus(reply);
+      if (!thermal) note = "did not answer as a receipt printer";
+    } catch (e) {
+      note = e.message;
+    }
+    out.push({
+      id: `usb:${d.path}`,
+      transport: "usb",
+      name: d.name,
+      address: d.port || "USB",
+      path: d.path,
+      deviceKey: hex12(d.path.split("#")[2]),
+      online,
+      thermal,
+      verified: online && thermal,
+      note,
+    });
+  }
+  // 2) Windows printer queues that are not just another view of a device above.
+  //    A queue can't be asked for its status, so it is never "verified": it is
+  //    only used when nothing verified is available.
+  const directPorts = new Set(devices.map((d) => d.port).filter(Boolean));
+  for (const q of await listWindowsPrinters()) {
+    if (directPorts.has(q.PortName)) continue;
+    const label = `${q.Name} ${q.DriverName || ""}`;
+    if (VIRTUAL_PORT.test(q.PortName || "") || VIRTUAL_NAME.test(label)) continue;
+    if (NETWORK_PORT.test(q.PortName || "")) continue; // office printer installed over the network
+    const thermal = THERMAL_NAME.test(label);
+    const online = !q.WorkOffline && !(Number(q.PrinterState) & QUEUE_DEAD);
+    let note = "Windows printer queue — not tested";
+    if (!online) note = "Windows reports this printer as not available";
+    else if (!thermal) note = "not recognised as a thermal printer";
+    out.push({
+      id: `usb:${q.Name}`,
+      transport: "usb",
+      name: q.Name,
+      address: q.PortName || "",
+      online,
+      thermal,
+      verified: false,
+      note,
+    });
+  }
+  return out;
+}
+
+async function detectLan(skipIps = []) {
+  const ips = (await scanLan()).filter((ip) => !skipIps.includes(ip));
+  const arp = ips.length ? await arpTable() : {};
+  const results = await Promise.all(
+    ips.map(async (ip) => {
+      const thermal = await probeEscposTcp(ip);
+      return {
+        id: `tcp:${ip}`,
+        transport: "tcp",
+        name: thermal ? "Network thermal printer" : "Network printer",
+        address: ip,
+        deviceKey: arp[ip] || "",
+        online: true,
+        thermal,
+        verified: thermal,
+        note: thermal ? "" : "did not answer as a receipt printer",
+      };
+    }),
+  );
+  return results;
+}
+
+async function detectBluetooth() {
+  const out = [];
+  for (const d of await listBluetoothPorts()) {
+    let online = false;
+    let thermal = false;
+    let note = "";
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const reply = await sendSerial(d.port, STATUS_REQUEST, { expectReply: true });
+      online = true;
+      thermal = isEscposStatus(reply) || THERMAL_NAME.test(d.name || "");
+      if (!thermal) note = "did not answer as a receipt printer";
+    } catch {
+      note = "paired but not reachable (off or out of range)";
+    }
+    out.push({
+      id: `bt:${d.port}`,
+      transport: "bt",
+      name: d.name,
+      address: d.port,
+      deviceKey: hex12(d.address),
+      online,
+      thermal,
+      verified: online && thermal,
+      note,
+    });
+  }
+  return out;
+}
+
+/**
+ * Find every printer this PC can reach and TEST each one. `skipLanIps` are hosts
+ * already known not to be receipt printers, so they are never poked again.
+ * Returns [{ id, transport, name, address, deviceKey, online, thermal, verified, note }].
+ * `verified` = the device itself answered an ESC/POS status request.
+ */
+async function detectAll({ skipLanIps = [] } = {}) {
+  const [usb, lan, bt] = await Promise.all([
+    detectUsb().catch(() => []),
+    detectLan(skipLanIps).catch(() => []),
+    detectBluetooth().catch(() => []),
+  ]);
+  return [...usb, ...lan, ...bt];
+}
+
+const TRANSPORT_ORDER = { usb: 0, tcp: 1, bt: 2 };
+
+/**
+ * Best usable printer: verified ones first; among equals the one already in use,
+ * then USB > LAN > Bluetooth.
+ */
+function pickBest(printers, currentId) {
+  const rank = (p) =>
+    (p.verified ? 0 : 100) + (p.id === currentId ? 0 : 10) + TRANSPORT_ORDER[p.transport];
+  return (
+    printers.filter((p) => p.online && p.thermal).sort((a, b) => rank(a) - rank(b))[0] || null
+  );
+}
+
+module.exports = {
+  scanLan,
+  listUsbPrinters,
+  localSubnets,
+  portScan,
+  discoverMdns,
+  detectAll,
+  pickBest,
+};

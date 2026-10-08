@@ -72,7 +72,22 @@ async function syncOfflineOrders(orders) {
   return res.json();
 }
 
+/**
+ * Tell the server which printers this PC can see. Returns { billPrinterId } —
+ * the printer staff picked for invoices in the admin / reception panel.
+ */
+async function reportPrinters(printers) {
+  const res = await fetch(`${BASE}/api/orders/printers`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ printers }),
+  });
+  if (!res.ok) throw new Error(`printers HTTP ${res.status}`);
+  return res.json();
+}
+
 module.exports = {
+  reportPrinters,
   fetchQueue,
   markPrinted,
   fetchBillQueue,

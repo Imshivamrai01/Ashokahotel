@@ -1,59 +1,96 @@
-// Transport-agnostic KOT printing via node-thermal-printer.
-//   - WiFi/Ethernet:  interface = tcp://<ip>:<port>   (pure JS, no native module)
-//   - USB:            interface = printer:<WindowsPrinterName>
-//                     (requires the @thiagoelg/node-printer native driver)
+// Transport-agnostic KOT printing. node-thermal-printer is used ONLY to compose
+// the ESC/POS bytes; delivery is ours, so no native printer module is needed:
+//   - "tcp"  WiFi/Ethernet → raw socket to <ip>:9100
+//   - "usb"  plugged-in USB printer → written directly to the device, or (when
+//            only a Windows printer queue is known) a RAW job through the spooler
+//   - "bt"   Bluetooth → the paired device's serial (COM) port
+const net = require("net");
 const {
   ThermalPrinter,
   PrinterTypes,
   CharacterSet,
 } = require("node-thermal-printer");
+const {
+  sendRawToSpooler,
+  sendUsbDirect,
+  sendSerial,
+  listWindowsPrinters,
+  listUsbPrintDevices,
+} = require("./winraw");
 
-// node-thermal-printer's `printer:` and `tcp://` interface regexes both require
-// a NON-EMPTY host/name. A blank value would silently fall through to its File
-// interface and write raw ESC/POS bytes to a literal file named "printer:" /
-// "tcp:" — and File.execute retries 1000×200ms (~200s), freezing the poll loop.
-// So validate up front and fail fast with a clear message.
-function buildInterface(config) {
+// Fail fast with a clear message when the selected transport has no target.
+function assertTarget(config) {
   if (config.transport === "usb") {
-    if (!config.usbPrinterName) throw new Error("No USB printer selected");
-    return `printer:${config.usbPrinterName}`;
+    if (!config.usbDevicePath && !config.usbPrinterName) throw new Error("No USB printer selected");
+  } else if (config.transport === "bt") {
+    if (!config.btPort) throw new Error("No Bluetooth printer selected");
+  } else if (!config.printerIp) {
+    throw new Error("No printer IP configured");
   }
-  if (!config.printerIp) throw new Error("No printer IP configured");
-  return `tcp://${config.printerIp}:${config.printerPort || 9100}`;
 }
 
-// Lazily load the native USB driver only when USB is actually used. The TCP
-// path never touches it, so a missing native module doesn't break WiFi/Ethernet.
-let _usbDriver = null;
-function usbDriver() {
-  if (_usbDriver) return _usbDriver;
-  try {
-    _usbDriver = require("@thiagoelg/node-printer");
-  } catch {
-    throw new Error(
-      "USB printing module not installed — run: npm i @thiagoelg/node-printer && npm run rebuild-usb",
-    );
-  }
-  return _usbDriver;
-}
-
-function makePrinter(config) {
-  const opts = {
-    type: PrinterTypes.EPSON, // TVS Champ RP STAR speaks ESC/POS (Epson-compatible)
-    interface: buildInterface(config),
+// Composer only — the interface is never opened (we call getBuffer(), not execute()).
+function makePrinter() {
+  return new ThermalPrinter({
+    type: PrinterTypes.EPSON, // Posiflow / TVS / Rugtek all speak ESC/POS (Epson-compatible)
+    interface: "tcp://127.0.0.1:9100",
     characterSet: CharacterSet.PC437_USA,
     removeSpecialCharacters: false,
-    options: { timeout: 5000 },
-  };
-  // The printer: interface needs the native driver object passed explicitly;
-  // node-thermal-printer does NOT auto-require it (throws "No driver set!").
-  if (config.transport === "usb") opts.driver = usbDriver();
-  return new ThermalPrinter(opts);
+  });
+}
+
+function sendTcp(host, port, bytes, timeout = 5000) {
+  return new Promise((resolve, reject) => {
+    const socket = new net.Socket();
+    let done = false;
+    const finish = (err) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      if (err) reject(err);
+      else resolve();
+    };
+    socket.setTimeout(timeout);
+    socket.once("timeout", () => finish(new Error(`Printer ${host} timed out`)));
+    socket.once("error", (e) => finish(new Error(`Printer ${host}: ${e.code || e.message}`)));
+    socket.once("close", () => finish());
+    socket.connect(port, host, () => socket.end(bytes));
+  });
+}
+
+// Deliver composed bytes over whichever transport is configured. Throws if the
+// printer is unreachable (so the caller leaves the order unmarked and retries).
+// Note: over TCP/Bluetooth this resolves when the bytes are handed to the link —
+// it does NOT confirm physical printing (paper-out is not detected there).
+async function send(config, bytes, docName) {
+  assertTarget(config);
+  if (config.transport === "usb") {
+    if (config.usbDevicePath) {
+      await sendUsbDirect(config.usbDevicePath, bytes);
+      return;
+    }
+    return sendRawToSpooler(config.usbPrinterName, bytes, docName);
+  }
+  if (config.transport === "bt") {
+    await sendSerial(config.btPort, bytes);
+    return;
+  }
+  return sendTcp(config.printerIp, config.printerPort || 9100, bytes);
 }
 
 async function isConnected(config) {
   try {
-    return await makePrinter(config).isPrinterConnected();
+    assertTarget(config);
+    if (config.transport === "usb" && config.usbDevicePath) {
+      return (await listUsbPrintDevices()).some((d) => d.path === config.usbDevicePath);
+    }
+    if (config.transport === "usb") {
+      const q = (await listWindowsPrinters()).find((p) => p.Name === config.usbPrinterName);
+      return !!q && !q.WorkOffline;
+    }
+    if (config.transport === "bt") return true; // only a real write can tell
+    await sendTcp(config.printerIp, config.printerPort || 9100, Buffer.alloc(0), 2000);
+    return true;
   } catch {
     return false;
   }
@@ -69,10 +106,9 @@ function fmtTime(iso) {
 
 // Render + send one KOT. Throws if the printer is unreachable (so the caller
 // leaves the order unmarked and retries on the next poll).
-// Note: over TCP, execute() resolves when bytes hit the OS socket — it does NOT
-// confirm physical printing (paper-out is not detected here).
 async function printKot(config, order) {
-  const p = makePrinter(config);
+  assertTarget(config);
+  const p = makePrinter();
 
   p.alignCenter();
   p.bold(true);
@@ -113,7 +149,7 @@ async function printKot(config, order) {
   }
 
   p.cut();
-  await p.execute();
+  await send(config, p.getBuffer(), `KOT ${order.kotNumber || ""}`.trim());
 }
 
 function money(n) {
@@ -123,7 +159,8 @@ function money(n) {
 // Render + send one customer BILL (tax invoice) with GST. Same transport rules
 // as KOT. `branding` carries name/GSTIN/phone from the server.
 async function printBill(config, order, branding = {}) {
-  const p = makePrinter(config);
+  assertTarget(config);
+  const p = makePrinter();
 
   p.alignCenter();
   p.bold(true);
@@ -197,7 +234,7 @@ async function printBill(config, order, branding = {}) {
   p.println("Thank you! Visit again.");
   p.bold(false);
   p.cut();
-  await p.execute();
+  await send(config, p.getBuffer(), `BILL ${order.kotNumber || ""}`.trim());
 }
 
 async function testPrint(config) {
@@ -240,5 +277,5 @@ module.exports = {
   testPrint,
   testBillPrint,
   isConnected,
-  makePrinter,
+  send,
 };

@@ -98,7 +98,7 @@
       <div class="brand">Ashoka KOT<small id="serverLine">printer agent</small></div>
       <nav>
         <button data-tab="dash" class="active"><span class="ico">▦</span> Dashboard</button>
-        <button data-tab="printer"><span class="ico">🖨</span> Printer</button>
+        <button data-tab="printer"><span class="ico">🖨</span> Printers</button>
         <button data-tab="history"><span class="ico">🧾</span> History</button>
         <button data-tab="pos"><span class="ico">🛒</span> Order</button>
         <button data-tab="settings"><span class="ico">⚙</span> Settings</button>
@@ -123,13 +123,14 @@
         <div class="panel">
           <h3>Connection</h3>
           <div class="kv"><span>Server</span><span id="dServer">—</span></div>
-          <div class="kv"><span>Printer</span><span id="dPrinter">—</span></div>
+          <div class="kv"><span>KOT printers</span><span id="dPrinter">—</span></div>
+          <div class="kv"><span>Invoice printer</span><span id="dBill">—</span></div>
           <div class="kv"><span>Status</span><span id="dStatus">—</span></div>
         </div>
         <div class="actions" style="margin-bottom:16px">
           <button class="act primary" id="bTest">Test Print</button>
           <button class="act" id="bPrintNow">Print Now</button>
-          <button class="act" id="bFind">Find Printer</button>
+          <button class="act" id="bFind">Find Printers</button>
         </div>
         <div class="panel">
           <h3>Activity</h3>
@@ -139,16 +140,36 @@
 
       <!-- PRINTER -->
       <section class="tab" id="tab-printer">
-        <h2>Printer</h2>
+        <h2>Printers</h2>
         <div class="panel">
-          <h3>Connection type</h3>
+          <h3>Connected printers <span id="detCount" style="text-transform:none"></span></h3>
+          <table>
+            <thead><tr><th>Connection</th><th>Printer</th><th>Status</th><th>KOT</th><th>Invoice</th></tr></thead>
+            <tbody id="detBody"></tbody>
+          </table>
+          <div class="empty hide" id="detEmpty">No printers found yet. Plug in or switch on the printer, then scan.</div>
+          <div class="footbar">
+            <button class="act primary" id="bDetect">Scan &amp; connect</button>
+            <button class="act" id="bTest2">Test KOT on all</button>
+            <button class="act" id="bTestBill">Test invoice</button>
+          </div>
+          <p style="font-size:11px;color:var(--muted);margin:10px 0 0">
+            Every working printer found over USB, WiFi/LAN and Bluetooth prints each KOT. Untick <b>KOT</b> to leave one out.
+            The <b>invoice</b> prints on one printer only — choose it in the Admin or Reception panel on the website.
+            A Bluetooth printer must be paired in Windows once before it can be found.
+          </p>
+        </div>
+
+        <div class="panel">
+          <h3>Manual setup (optional)</h3>
+          <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Only needed for a printer the scan cannot find. It is used in addition to the ones above.</p>
           <div class="seg">
             <button id="seg-tcp">WiFi / LAN</button>
-            <button id="seg-usb">USB</button>
+            <button id="seg-usb">Windows printer</button>
           </div>
 
           <div id="tcpBox">
-            <label>Detected printers</label>
+            <label>Detected on network</label>
             <div class="scan">
               <select id="lanResults"><option value="">— scan —</option></select>
               <button class="act" id="scanLan">Scan</button>
@@ -160,49 +181,15 @@
           </div>
 
           <div id="usbBox" class="hide">
-            <label>USB / Windows printer</label>
+            <label>Printer installed in Windows</label>
             <div class="scan">
               <select id="usbResults"><option value="">— scan —</option></select>
               <button class="act" id="scanUsb">Scan</button>
             </div>
-            <p style="font-size:11px;color:var(--muted)">USB needs the native printer driver (see README).</p>
           </div>
-        </div>
-        <div class="footbar">
-          <button class="act primary" id="bSavePrinter">Save</button>
-          <button class="act" id="bTest2">Test Print</button>
-        </div>
-
-        <!-- BILL PRINTER (separate device) -->
-        <div class="panel" style="margin-top:22px">
-          <h3>Bill / Receipt printer</h3>
-          <div class="check" style="margin-top:0">
-            <input id="billEnabled" type="checkbox" />
-            <label style="margin:0">Print customer bills to a separate printer</label>
+          <div class="footbar">
+            <button class="act primary" id="bSavePrinter">Save</button>
           </div>
-          <div id="billBox" class="hide">
-            <div class="seg" style="margin-top:12px">
-              <button id="bseg-tcp">WiFi / LAN</button>
-              <button id="bseg-usb">USB</button>
-            </div>
-            <div id="billTcpBox">
-              <div class="row">
-                <div style="flex:1"><label>Bill printer IP</label><input id="billPrinterIp" type="text" placeholder="192.168.1.151" /></div>
-                <div style="flex:0 0 90px"><label>Port</label><input id="billPrinterPort" type="number" placeholder="9100" /></div>
-              </div>
-            </div>
-            <div id="billUsbBox" class="hide">
-              <label>USB / Windows printer</label>
-              <div class="scan">
-                <select id="billUsbResults"><option value="">— scan —</option></select>
-                <button class="act" id="scanBillUsb">Scan</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="footbar">
-          <button class="act primary" id="bSaveBill">Save bill printer</button>
-          <button class="act" id="bTestBill">Test bill</button>
         </div>
       </section>
 

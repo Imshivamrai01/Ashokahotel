@@ -16,48 +16,50 @@ const {
   markBillPrinted,
   fetchMenu,
   syncOfflineOrders,
+  reportPrinters,
 } = require("./lib/api");
-const { scanLan, listUsbPrinters } = require("./lib/discovery");
-const {
-  printKot,
-  printBill,
-  testPrint,
-  testBillPrint,
-  isConnected,
-} = require("./lib/printer");
+const { scanLan, listUsbPrinters, detectAll } = require("./lib/discovery");
+const { printKot, printBill, testPrint, testBillPrint } = require("./lib/printer");
 
 const TOKEN_PLACEHOLDER = "PASTE_AGENT_TOKEN_HERE";
 const tokenConfigured = () => !!AGENT_TOKEN && AGENT_TOKEN !== TOKEN_PLACEHOLDER;
 
 const store = new Store({
   defaults: {
-    transport: "tcp", // "tcp" (LAN/WiFi) | "usb"
+    // ── Printers ──────────────────────────────────────────────────────────────
+    // KOTs print on EVERY working printer the scan finds. The invoice prints on
+    // one of them, chosen by staff in the admin / reception panel (billPrinterId).
+    printers: [], // last scan result — lets printing start before the next scan finishes
+    kotDisabledIds: [], // printers the operator switched off for KOT
+    billPrinterId: "", // from the server; "" = first working printer
+    nonReceiptIps: [], // LAN hosts on :9100 that are not receipt printers — never probed again
+    // Optional printer added by hand (Printer tab → Manual setup), used in
+    // addition to the detected ones while autoSelect is false.
+    transport: "tcp", // "tcp" (LAN/WiFi) | "usb" (Windows printer queue)
     printerIp: "",
     printerPort: 9100,
     usbPrinterName: "",
+    autoSelect: true,
+    // ── Agent ─────────────────────────────────────────────────────────────────
     pollMs: 2000,
     autoLaunch: true,
+    installAt: 0, // first launch; older KOTs are never printed
+    billPrimed: false, // true once the pre-install invoice backlog has been skipped
     printedIds: [], // durable dedup across restarts
-    // ── Bill (tax invoice) printer — separate device from the KOT printer ──
-    billEnabled: false,
-    billTransport: "tcp",
-    billPrinterIp: "",
-    billPrinterPort: 9100,
-    billUsbPrinterName: "",
-    billPrinterPort: 9100,
-    billUsbPrinterName: "",
     billPrintedIds: [],
-    // ── Offline POS ──────────────────────────────────────────────────────────────
+    // ── Offline POS ───────────────────────────────────────────────────────────
     offlineMenu: [],
     offlineSyncQueue: [],
   },
 });
 
 const cfg = () => store.store;
-const hasPrinter = () => {
-  const c = cfg();
-  return c.transport === "usb" ? !!c.usbPrinterName : !!c.printerIp;
-};
+const TRANSPORT_LABEL = { usb: "USB", tcp: "WiFi/LAN", bt: "Bluetooth" };
+const TRANSPORT_ORDER = { usb: 0, tcp: 1, bt: 2 };
+const REDETECT_MS = 3 * 60 * 1000; // look for added / removed printers this often
+const HEARTBEAT_MS = 60 * 1000;
+const BACKLOG_GRACE_MS = 15 * 60 * 1000;
+const MAX_RETRIES = 5;
 
 const launchedHidden = process.argv.includes("--hidden");
 const now = () => new Date();
@@ -68,8 +70,12 @@ let mainWin = null;
 let pollTimer = null;
 let polling = false;
 let scanning = false;
-let printerFailCount = 0;
+let failStreak = 0;
 let markFailCount = 0;
+let lastDetected = []; // every printer the last scan saw (usable or not)
+let lastDetectAt = 0;
+let lastHeartbeatAt = 0;
+let retries = []; // { order, printerId, tries } — a KOT one printer missed
 const printedSession = new Set();
 
 // ── Live application state (streamed to the dashboard) ───────────────────────
@@ -124,7 +130,110 @@ function emitState() {
     status: state.status,
     stats: state.stats,
     history: state.history,
+    printers: printerView(),
   });
+}
+
+// ── Printers in use ──────────────────────────────────────────────────────────
+// The printer added by hand, shaped like a scan result (or null if none).
+function manualPrinter() {
+  const c = cfg();
+  if (c.autoSelect !== false) return null;
+  const usb = c.transport === "usb";
+  if (usb ? !c.usbPrinterName : !c.printerIp) return null;
+  return {
+    id: usb ? `usb:${c.usbPrinterName}` : `tcp:${c.printerIp}`,
+    transport: usb ? "usb" : "tcp",
+    name: usb ? c.usbPrinterName : `Printer ${c.printerIp}`,
+    address: usb ? "Windows printer" : c.printerIp,
+    online: true,
+    thermal: true,
+    verified: false,
+    manual: true,
+    note: "added by hand — not tested",
+    target: {
+      transport: c.transport,
+      printerIp: c.printerIp,
+      printerPort: c.printerPort,
+      usbPrinterName: c.usbPrinterName,
+    },
+  };
+}
+
+// Connection settings in the shape lib/printer.js expects.
+const targetOf = (p) =>
+  p.target || {
+    transport: p.transport,
+    printerIp: p.address,
+    printerPort: 9100,
+    usbPrinterName: p.name,
+    usbDevicePath: p.path || "",
+    btPort: p.address,
+  };
+
+/**
+ * Every distinct working printer. Tested printers win over untested Windows
+ * queues, and one physical printer reachable two ways (say USB and WiFi) counts
+ * once — otherwise it would print each KOT twice.
+ */
+function usablePrinters() {
+  let list = lastDetected.filter((p) => p.online && p.thermal);
+  if (list.some((p) => p.verified)) list = list.filter((p) => p.verified);
+  list = [...list].sort((a, b) => TRANSPORT_ORDER[a.transport] - TRANSPORT_ORDER[b.transport]);
+  const seen = new Set();
+  const out = [];
+  for (const p of list) {
+    if (p.deviceKey) {
+      if (seen.has(p.deviceKey)) continue;
+      seen.add(p.deviceKey);
+    }
+    out.push(p);
+  }
+  const manual = manualPrinter();
+  if (manual && !out.some((p) => p.id === manual.id)) out.push(manual);
+  return out;
+}
+
+const kotPrinters = () =>
+  usablePrinters().filter((p) => !(cfg().kotDisabledIds || []).includes(p.id));
+
+// The invoice printer staff chose; falls back to the first working one.
+function billPrinter() {
+  const all = usablePrinters();
+  return all.find((p) => p.id === cfg().billPrinterId) || all[0] || null;
+}
+
+// What the dashboard (and the server) get to see.
+function printerView() {
+  const usable = usablePrinters();
+  const usableIds = new Set(usable.map((p) => p.id));
+  const kotIds = new Set(kotPrinters().map((p) => p.id));
+  const bill = billPrinter();
+  const manual = manualPrinter();
+  const all = manual && !lastDetected.some((p) => p.id === manual.id) ? [...lastDetected, manual] : lastDetected;
+  return all.map((p) => {
+    const isUsable = usableIds.has(p.id);
+    const shadowed = !isUsable && p.online && p.thermal; // same printer on another connection
+    return {
+      id: p.id,
+      transport: p.transport,
+      name: p.name,
+      address: p.address,
+      usable: isUsable,
+      shadowed,
+      kot: kotIds.has(p.id),
+      bill: !!bill && bill.id === p.id,
+      note: shadowed ? "same printer is already connected another way" : p.note || "",
+    };
+  });
+}
+
+const namesOf = (list) => list.map((p) => `${p.name} (${TRANSPORT_LABEL[p.transport]})`).join(" + ");
+
+function readyStatus() {
+  const kot = kotPrinters();
+  if (!kot.length) return setStatus(false, "No working printer — searching again shortly");
+  setStatus(true, `${kot.length} printer${kot.length === 1 ? "" : "s"} ready: ${namesOf(kot)}`);
 }
 
 // ── Single instance ──────────────────────────────────────────────────────────
@@ -157,27 +266,15 @@ function setStatus(ok, msg) {
 function refreshTray() {
   if (!tray) return;
   tray.setImage(trayIcon(state.status.ok));
-  tray.setToolTip(`Ashoka Hotel KOT Printer — ${state.status.msg}`);
+  tray.setToolTip(`Ashoka Hotel KOT Printer — ${state.status.msg}`.slice(0, 120));
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: state.status.ok ? "● Connected" : "● Disconnected", enabled: false },
       { label: state.status.msg.slice(0, 60), enabled: false },
       { type: "separator" },
       { label: "Open Dashboard", click: showMain },
-      { label: "Find printer", click: () => autodetect({ openIfAmbiguous: true }) },
-      {
-        label: "Test Print",
-        click: async () => {
-          try {
-            await testPrint(cfg());
-            logEvent("info", "Test print sent");
-            setStatus(true, "Test print sent");
-          } catch (e) {
-            logEvent("error", `Test failed: ${e.message}`);
-            setStatus(false, `Test failed: ${e.message}`);
-          }
-        },
-      },
+      { label: "Find printers", click: () => autodetect({ openIfNone: true, fresh: true }) },
+      { label: "Test Print", click: () => runTestPrint() },
       { label: "Print Now", click: () => poll() },
       { type: "separator" },
       {
@@ -221,45 +318,114 @@ function showMain() {
     }
   });
 }
-const openConfig = showMain; // back-compat alias
 
-// ── Auto-detect printer ───────────────────────────────────────────────────────
-async function autodetect({ openIfAmbiguous = true } = {}) {
+// ── Auto-detect printers ─────────────────────────────────────────────────────
+// Finds every printer reachable over USB, LAN/WiFi and Bluetooth and TESTS each
+// one (asks it for its ESC/POS status). All working ones are then used for KOT.
+//   fresh — forget the "not a receipt printer" list (operator-triggered scans)
+//   quiet — background re-check: only speak up when the set of printers changes
+async function autodetect({ openIfNone = false, fresh = false, quiet = false } = {}) {
   if (scanning) return false;
   scanning = true;
+  lastDetectAt = Date.now();
   try {
-    setStatus(false, "Searching for printer…");
-    logEvent("info", "Scanning for printers…");
-    const ips = await scanLan();
-    if (ips.length === 1) {
-      store.set("transport", "tcp");
-      store.set("printerIp", ips[0]);
-      store.set("printerPort", 9100);
-      printerFailCount = 0;
-      logEvent("info", `Found printer at ${ips[0]}`);
-      setStatus(true, `Found printer at ${ips[0]}`);
-      return true;
+    const before = usablePrinters().map((p) => p.id).sort().join("|");
+    if (!quiet) {
+      setStatus(false, "Searching for printers…");
+      logEvent("info", "Scanning USB, network and Bluetooth for printers…");
     }
-    if (ips.length === 0) {
-      const usb = await listUsbPrinters();
-      if (usb.length === 1) {
-        store.set("transport", "usb");
-        store.set("usbPrinterName", usb[0]);
-        printerFailCount = 0;
-        logEvent("info", `Found USB printer: ${usb[0]}`);
-        setStatus(true, `Found USB printer: ${usb[0]}`);
-        return true;
+    if (fresh) store.set("nonReceiptIps", []);
+    const found = await detectAll({ skipLanIps: cfg().nonReceiptIps || [] });
+
+    const notReceipt = found.filter((p) => p.transport === "tcp" && !p.thermal).map((p) => p.address);
+    if (notReceipt.length) {
+      store.set("nonReceiptIps", [...new Set([...(cfg().nonReceiptIps || []), ...notReceipt])].slice(-200));
+    }
+
+    lastDetected = found;
+    store.set("printers", found);
+    const usable = usablePrinters();
+    const changed = usable.map((p) => p.id).sort().join("|") !== before;
+
+    if (!quiet || changed) {
+      for (const p of printerView()) {
+        logEvent(
+          p.usable ? "info" : "warn",
+          `${TRANSPORT_LABEL[p.transport]} · ${p.name} (${p.address}) — ${p.usable ? "working" : p.note || "not usable"}`,
+        );
       }
+      if (usable.length) logEvent("info", `KOT will print on: ${namesOf(kotPrinters()) || "none (all switched off)"}`);
     }
-    setStatus(false, ips.length > 1 ? "Multiple printers — pick one" : "No printer found");
-    if (openIfAmbiguous) showMain();
-    return false;
+    if (!quiet || changed || !state.status.ok) readyStatus();
+    emitState();
+    sendHeartbeat();
+    if (!usable.length && openIfNone) showMain();
+    return usable.length > 0;
   } finally {
     scanning = false;
   }
 }
 
-// ── Poll loop ────────────────────────────────────────────────────────────────
+// ── Server heartbeat ─────────────────────────────────────────────────────────
+// Publishes the printer list so staff can pick the invoice printer in the admin /
+// reception panel, and brings their choice back.
+async function sendHeartbeat() {
+  if (!tokenConfigured()) return;
+  lastHeartbeatAt = Date.now();
+  try {
+    // Working printers only (plus the chosen invoice printer, so it shows as
+    // offline instead of vanishing from the picker).
+    const list = printerView()
+      .filter((p) => p.usable || p.id === cfg().billPrinterId)
+      .map(({ id, name, transport, address, usable }) => ({ id, name, transport, address, usable }));
+    const res = await reportPrinters(list);
+    const chosen = typeof res.billPrinterId === "string" ? res.billPrinterId : "";
+    if (chosen !== cfg().billPrinterId) {
+      store.set("billPrinterId", chosen);
+      const bill = billPrinter();
+      logEvent("info", `Invoice printer: ${bill ? namesOf([bill]) : "none connected"}`);
+      emitState();
+    }
+  } catch {
+    // Server unreachable or not updated yet — keep the last known choice.
+  }
+}
+
+// ── KOT printing ─────────────────────────────────────────────────────────────
+// Send one KOT to several printers at the same time.
+function printKotOn(printers, order) {
+  return Promise.all(
+    printers.map(async (p) => {
+      try {
+        await printKot(targetOf(p), order);
+        return { p, ok: true };
+      } catch (e) {
+        return { p, ok: false, error: e.message };
+      }
+    }),
+  );
+}
+
+// A printer that missed a KOT gets it again on the following polls.
+async function runRetries(printers) {
+  if (!retries.length) return;
+  const pending = retries;
+  retries = [];
+  for (const r of pending) {
+    const p = printers.find((x) => x.id === r.printerId);
+    if (!p) continue; // printer gone or switched off — the other printer has it
+    // eslint-disable-next-line no-await-in-loop
+    const [res] = await printKotOn([p], r.order);
+    if (res.ok) {
+      logEvent("info", `Printed ${r.order.kotNumber} on ${p.name} (retry)`);
+    } else if (r.tries + 1 >= MAX_RETRIES) {
+      logEvent("error", `Gave up printing ${r.order.kotNumber} on ${p.name}: ${res.error}`);
+    } else {
+      retries.push({ ...r, tries: r.tries + 1 });
+    }
+  }
+}
+
 async function poll() {
   if (polling || scanning) return;
   polling = true;
@@ -268,7 +434,7 @@ async function poll() {
       setStatus(false, "App token not set in this build");
       return;
     }
-    
+
     // Sync Menu and Offline Orders even if physical printer is disconnected
     try {
       const data = await fetchMenu();
@@ -294,45 +460,77 @@ async function poll() {
       }
     }
 
-    if (!hasPrinter()) {
-      setStatus(false, "No printer — use Find printer / Settings");
+    if (Date.now() - lastHeartbeatAt > HEARTBEAT_MS) sendHeartbeat();
+
+    const printers = kotPrinters();
+    if (!printers.length) {
+      setStatus(false, "No working printer — searching again shortly");
+      // Keep looking on our own: a printer plugged in later is picked up without a click.
+      if (Date.now() - lastDetectAt > 30000) autodetect({ quiet: true });
       return;
     }
-    const c = cfg();
+
+    await runRetries(printers);
+
     const queue = await fetchQueue();
     if (!Array.isArray(queue)) throw new Error("print-queue did not return a list");
     state.stats.queuePending = queue.length;
+    const cutoff = (cfg().installAt || 0) - BACKLOG_GRACE_MS;
     let printed = 0;
+    let skipped = 0;
     for (const order of queue) {
       if (printedSession.has(order._id)) continue;
-      try {
-        await printKot(c, order);
-        rememberPrinted(order._id);
-        recordPrint(order, true);
-        logEvent("info", `Printed ${order.kotNumber} → ${order.tableLabel}`);
-        markPrinted(order._id)
-          .then(() => {
-            markFailCount = 0;
-          })
-          .catch(() => {
-            markFailCount++;
-          });
-        printed++;
-      } catch (e) {
-        recordPrint(order, false);
-        logEvent("error", `Print failed (${order.kotNumber}): ${e.message}`);
-        await handlePrintFailure(e);
-        return;
+      if (new Date(order.createdAt).getTime() < cutoff) {
+        rememberPrinted(order._id); // placed before this app was installed
+        skipped++;
+        continue;
       }
+      // eslint-disable-next-line no-await-in-loop
+      const results = await printKotOn(printers, order);
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length === results.length) {
+        recordPrint(order, false);
+        logEvent("error", `Print failed (${order.kotNumber}): ${failed[0].error}`);
+        // eslint-disable-next-line no-await-in-loop
+        await handlePrintFailure(failed[0].error);
+        return; // still unmarked — it is retried on the next poll
+      }
+      rememberPrinted(order._id);
+      recordPrint(order, true);
+      logEvent(
+        "info",
+        `Printed ${order.kotNumber} → ${order.tableLabel} on ${results.filter((r) => r.ok).map((r) => r.p.name).join(" + ")}`,
+      );
+      for (const f of failed) {
+        logEvent("warn", `${f.p.name} missed ${order.kotNumber}: ${f.error} — will retry`);
+        retries.push({ order, printerId: f.p.id, tries: 0 });
+      }
+      markPrinted(order._id)
+        .then(() => {
+          markFailCount = 0;
+        })
+        .catch(() => {
+          markFailCount++;
+        });
+      printed++;
     }
-    printerFailCount = 0;
+    if (skipped) logEvent("info", `Skipped ${skipped} old KOT(s) from before this app was installed`);
+    failStreak = 0;
     state.stats.queuePending = 0;
+
     if (markFailCount >= 3) {
       setStatus(true, "Printed; server not updated (may reprint)");
+    } else if (printed) {
+      setStatus(true, `Printed ${printed} KOT(s) on ${printers.length} printer${printers.length === 1 ? "" : "s"}`);
     } else {
-      setStatus(true, printed ? `Printed ${printed} KOT(s)` : "Idle — up to date");
+      readyStatus();
     }
     emitState();
+
+    // A printer that missed a KOT may be off, and one may have been plugged in:
+    // re-check what is connected, in the background.
+    const stale = Date.now() - lastDetectAt;
+    if (stale > REDETECT_MS || (retries.length && stale > 30000)) autodetect({ quiet: true });
   } catch (e) {
     setStatus(false, `Server: ${e.message}`);
   } finally {
@@ -340,76 +538,53 @@ async function poll() {
   }
 }
 
-async function handlePrintFailure(err) {
-  printerFailCount++;
-  setStatus(false, `Printer: ${err.message}`);
-  if (cfg().transport !== "tcp" || printerFailCount < 3) return;
-  printerFailCount = 0;
-  if (scanning) return;
-  scanning = true;
-  try {
-    setStatus(false, "Printer unreachable — re-scanning…");
-    logEvent("warn", "Printer unreachable — re-scanning network…");
-    const ips = await scanLan();
-    const cur = cfg().printerIp;
-    const others = ips.filter((ip) => ip !== cur);
-    if (others.length === 1) {
-      store.set("printerIp", others[0]);
-      logEvent("info", `Printer moved → ${others[0]}`);
-      setStatus(true, `Printer moved → ${others[0]}`);
-    } else if (others.length > 1) {
-      setStatus(false, "Multiple printers found — pick in Settings");
-      showMain();
-    } else if (ips.includes(cur)) {
-      setStatus(false, `Printer at ${cur} reachable but not printing — check paper/cover`);
-    } else {
-      setStatus(false, "Printer offline — check power/cable");
-    }
-  } finally {
-    scanning = false;
-  }
+async function handlePrintFailure(message) {
+  failStreak++;
+  setStatus(false, `Printer: ${message}`);
+  // Two misses in a row → scan again for a working printer. Throttled so a dead
+  // printer doesn't trigger a scan on every poll.
+  if (failStreak < 2 || Date.now() - lastDetectAt < 30000) return;
+  failStreak = 0;
+  logEvent("warn", "No printer responding — scanning again…");
+  const ok = await autodetect({ openIfNone: true });
+  if (!ok) setStatus(false, "Printer offline — check power/cable/paper");
 }
 
 // ── Bill (tax invoice) printing ──────────────────────────────────────────────
+// Invoices go to ONE printer: the one picked in the admin / reception panel.
 const billPrintedSession = new Set();
 let billPolling = false;
 
-// Map the bill-printer store fields onto the shape printer.js expects.
-function billCfg() {
-  const c = cfg();
-  return {
-    transport: c.billTransport,
-    printerIp: c.billPrinterIp,
-    printerPort: c.billPrinterPort,
-    usbPrinterName: c.billUsbPrinterName,
-  };
-}
-function billHasPrinter() {
-  const c = cfg();
-  return c.billTransport === "usb" ? !!c.billUsbPrinterName : !!c.billPrinterIp;
-}
 function rememberBillPrinted(id) {
   billPrintedSession.add(id);
   store.set("billPrintedIds", [...billPrintedSession].slice(-1000));
 }
 
 async function pollBills() {
-  if (billPolling || scanning) return;
-  if (!cfg().billEnabled || !tokenConfigured() || !billHasPrinter()) return;
+  if (billPolling || scanning || !tokenConfigured()) return;
+  const target = billPrinter();
+  if (!target) return;
   billPolling = true;
   try {
     const { branding, queue } = await fetchBillQueue();
     if (!Array.isArray(queue)) return;
-    const bc = billCfg();
+    if (!cfg().billPrimed) {
+      // First run: invoices requested before this app existed are not reprinted.
+      for (const order of queue) rememberBillPrinted(order._id);
+      store.set("billPrimed", true);
+      if (queue.length) logEvent("info", `Skipped ${queue.length} old invoice(s) from before this app was installed`);
+      return;
+    }
     for (const order of queue) {
       if (billPrintedSession.has(order._id)) continue;
       try {
-        await printBill(bc, order, branding);
+        // eslint-disable-next-line no-await-in-loop
+        await printBill(targetOf(target), order, branding);
         rememberBillPrinted(order._id);
-        logEvent("info", `Printed BILL ${order.kotNumber} → ${order.tableLabel}`);
+        logEvent("info", `Printed INVOICE ${order.kotNumber} → ${order.tableLabel} on ${target.name}`);
         markBillPrinted(order._id).catch(() => {});
       } catch (e) {
-        logEvent("error", `Bill print failed (${order.kotNumber}): ${e.message}`);
+        logEvent("error", `Invoice print failed (${order.kotNumber}) on ${target.name}: ${e.message}`);
         return; // leave it queued; retry next tick
       }
     }
@@ -422,8 +597,6 @@ async function pollBills() {
 
 function startLoop() {
   if (pollTimer) clearInterval(pollTimer);
-  // Restore bill dedup set across restarts.
-  for (const id of cfg().billPrintedIds || []) billPrintedSession.add(id);
   const ms = Math.max(1500, Number(cfg().pollMs) || 2000);
   pollTimer = setInterval(() => {
     poll();
@@ -437,129 +610,145 @@ function applyAutoLaunch() {
   app.setLoginItemSettings({ openAtLogin: !!cfg().autoLaunch, args: ["--hidden"] });
 }
 
+// A test slip on every KOT printer.
+async function runTestPrint() {
+  const printers = kotPrinters();
+  if (!printers.length) {
+    setStatus(false, "No working printer to test");
+    return { ok: false, error: "No working printer" };
+  }
+  const results = await Promise.all(
+    printers.map((p) =>
+      testPrint(targetOf(p)).then(
+        () => ({ p, ok: true }),
+        (e) => ({ p, ok: false, error: e.message }),
+      ),
+    ),
+  );
+  for (const r of results) {
+    logEvent(r.ok ? "info" : "error", r.ok ? `Test print sent to ${r.p.name}` : `Test failed on ${r.p.name}: ${r.error}`);
+  }
+  const bad = results.filter((r) => !r.ok);
+  if (bad.length) setStatus(false, `Test failed on ${bad.map((r) => r.p.name).join(", ")}`);
+  else setStatus(true, `Test print sent to ${printers.length} printer${printers.length === 1 ? "" : "s"}`);
+  return bad.length ? { ok: false, error: bad[0].error } : { ok: true };
+}
+
 // ── IPC ──────────────────────────────────────────────────────────────────────
+const publicConfig = () => {
+  const { transport, printerIp, printerPort, usbPrinterName, pollMs, autoLaunch } = cfg();
+  return {
+    transport,
+    printerIp,
+    printerPort,
+    usbPrinterName,
+    pollMs,
+    autoLaunch,
+    serverUrl: SERVER_URL,
+    tokenConfigured: tokenConfigured(),
+  };
+};
 ipcMain.handle("get-state", () => ({
-  config: { ...cfg(), serverUrl: SERVER_URL, tokenConfigured: tokenConfigured() },
+  config: publicConfig(),
+  printers: printerView(),
   status: state.status,
   stats: state.stats,
   history: state.history,
   activity,
 }));
-ipcMain.handle("get-config", () => ({
-  ...cfg(),
-  serverUrl: SERVER_URL,
-  tokenConfigured: tokenConfigured(),
-}));
+ipcMain.handle("get-config", publicConfig);
 ipcMain.handle("save-config", (_e, incoming) => {
-  const allowed = [
-    "transport",
-    "printerIp",
-    "printerPort",
-    "usbPrinterName",
-    "pollMs",
-    "autoLaunch",
-  ];
+  const allowed = ["transport", "printerIp", "printerPort", "usbPrinterName", "pollMs", "autoLaunch"];
+  const before = JSON.stringify([cfg().transport, cfg().printerIp, cfg().usbPrinterName]);
   for (const k of allowed) {
     if (incoming && k in incoming) store.set(k, incoming[k]);
+  }
+  // Saving a different manual printer adds it alongside the detected ones.
+  if (JSON.stringify([cfg().transport, cfg().printerIp, cfg().usbPrinterName]) !== before) {
+    store.set("autoSelect", false);
   }
   applyAutoLaunch();
-  printerFailCount = 0;
+  failStreak = 0;
   startLoop();
   logEvent("info", "Settings saved");
+  emitState();
   return { ok: true };
 });
-ipcMain.handle("save-bill-config", (_e, incoming) => {
-  const allowed = [
-    "billEnabled",
-    "billTransport",
-    "billPrinterIp",
-    "billPrinterPort",
-    "billUsbPrinterName",
-  ];
-  for (const k of allowed) {
-    if (incoming && k in incoming) store.set(k, incoming[k]);
-  }
-  logEvent("info", "Bill printer settings saved");
-  pollBills();
+ipcMain.handle("set-kot-enabled", (_e, id, enabled) => {
+  const off = new Set(cfg().kotDisabledIds || []);
+  if (enabled) off.delete(id);
+  else off.add(id);
+  store.set("kotDisabledIds", [...off]);
+  const p = printerView().find((x) => x.id === id);
+  logEvent("info", `KOT printing ${enabled ? "on" : "off"} for ${p ? p.name : id}`);
+  readyStatus();
+  emitState();
   return { ok: true };
 });
 ipcMain.handle("test-bill", async () => {
+  const target = billPrinter();
+  if (!target) return { ok: false, error: "No working printer" };
   try {
-    await testBillPrint(billCfg());
-    logEvent("info", "Test bill sent");
+    await testBillPrint(targetOf(target));
+    logEvent("info", `Test invoice sent to ${target.name}`);
     return { ok: true };
   } catch (e) {
-    logEvent("error", `Bill test failed: ${e.message}`);
+    logEvent("error", `Test invoice failed on ${target.name}: ${e.message}`);
     return { ok: false, error: e.message };
   }
 });
 ipcMain.handle("scan-lan", () => scanLan());
 ipcMain.handle("list-usb", () => listUsbPrinters());
-ipcMain.handle("autodetect", () => autodetect({ openIfAmbiguous: false }));
-ipcMain.handle("test-print", async () => {
-  try {
-    await testPrint(cfg());
-    logEvent("info", "Test print sent");
-    setStatus(true, "Test print sent");
-    return { ok: true };
-  } catch (e) {
-    logEvent("error", `Test failed: ${e.message}`);
-    setStatus(false, `Test failed: ${e.message}`);
-    return { ok: false, error: e.message };
-  }
-});
-ipcMain.handle("test-connection", () => isConnected(cfg()));
+ipcMain.handle("autodetect", () => autodetect({ fresh: true }));
+ipcMain.handle("test-print", () => runTestPrint());
 ipcMain.handle("print-now", () => poll());
 ipcMain.handle("reprint", async (_e, kotNumber) => {
   const order = recentOrders.find((o) => o.kotNumber === kotNumber);
   if (!order) return { ok: false, error: "Order not in recent cache" };
-  try {
-    await printKot(cfg(), order);
-    logEvent("info", `Reprinted ${order.kotNumber}`);
-    return { ok: true };
-  } catch (e) {
-    logEvent("error", `Reprint failed: ${e.message}`);
-    return { ok: false, error: e.message };
-  }
+  const results = await printKotOn(kotPrinters(), order);
+  const ok = results.some((r) => r.ok);
+  logEvent(ok ? "info" : "error", ok ? `Reprinted ${order.kotNumber}` : `Reprint failed: ${results[0]?.error || "no printer"}`);
+  return ok ? { ok: true } : { ok: false, error: results[0]?.error || "No working printer" };
 });
 
 ipcMain.handle("get-offline-menu", () => store.get("offlineMenu", []));
 ipcMain.handle("get-offline-locations", () => store.get("offlineLocations", []));
 ipcMain.handle("place-offline-order", async (_e, payload) => {
-  if (!hasPrinter()) return { ok: false, error: "No printer configured" };
-  
+  const printers = kotPrinters();
+  if (!printers.length) return { ok: false, error: "No printer configured" };
+
   const localOrder = {
     _id: `LOCAL-${Date.now()}`,
-    kotNumber: `L-${Math.floor(Math.random()*10000)}`,
+    kotNumber: `L-${Math.floor(Math.random() * 10000)}`,
     tableLabel: payload.table,
     captainName: "Offline PC",
-    items: payload.items.map(i => ({
+    items: payload.items.map((i) => ({
       name: i.item.name,
       quantity: i.quantity,
-      notes: "Offline order"
+      notes: "Offline order",
     })),
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
   };
-  
+
   try {
     // 1. ALWAYS Save to sync queue first so the order is never lost
     const queue = store.get("offlineSyncQueue") || [];
     queue.push(localOrder);
     store.set("offlineSyncQueue", queue);
-    
+
     // Attempt immediate sync to cloud
-    poll(); 
-    
+    poll();
+
     // 2. Now try to print locally
-    try {
-      await printKot(cfg(), localOrder);
+    const results = await printKotOn(printers, localOrder);
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length < results.length) {
       logEvent("info", `Printed OFFLINE ${localOrder.kotNumber} → ${localOrder.tableLabel}`);
       return { ok: true };
-    } catch (printErr) {
-      logEvent("error", `Offline print failed (but order saved): ${printErr.message}`);
-      // Return ok but with a warning so the UI can inform the user
-      return { ok: true, warning: "Order saved for sync, but Printer Failed: " + printErr.message };
     }
+    logEvent("error", `Offline print failed (but order saved): ${failed[0].error}`);
+    // Return ok but with a warning so the UI can inform the user
+    return { ok: true, warning: "Order saved for sync, but Printer Failed: " + failed[0].error };
   } catch (e) {
     logEvent("error", `Critical error saving offline order: ${e.message}`);
     return { ok: false, error: e.message };
@@ -573,6 +762,9 @@ app.on("before-quit", () => {
 
 app.whenReady().then(() => {
   for (const id of store.get("printedIds", [])) printedSession.add(id);
+  for (const id of store.get("billPrintedIds", [])) billPrintedSession.add(id);
+  if (!cfg().installAt) store.set("installAt", Date.now());
+  lastDetected = store.get("printers", []);
 
   applyAutoLaunch();
   tray = new Tray(trayIcon(false));
@@ -581,9 +773,8 @@ app.whenReady().then(() => {
 
   if (!launchedHidden) showMain();
 
-  if (!hasPrinter()) {
-    autodetect({ openIfAmbiguous: !launchedHidden });
-  }
+  // Check what is actually connected on every start.
+  autodetect({ openIfNone: !launchedHidden });
   startLoop();
 });
 
